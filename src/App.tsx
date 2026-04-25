@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, Component } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useDeferredValue, Component } from 'react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -152,6 +152,10 @@ function handleDataError(error: unknown, operationType: OperationType, path: str
 
 function formatCurrency(amount: number) {
   return `${Number(amount || 0).toLocaleString('vi-VN')}₫`;
+}
+
+function normalizeSearchValue(value: string) {
+  return value.trim().toLowerCase();
 }
 
 // Auth Component
@@ -315,14 +319,24 @@ export default function App() {
     const applyRepair = () => repairVietnameseUi();
     applyRepair();
 
+    let scheduled = false;
+    let animationFrameId = 0;
+    const scheduleRepair = () => {
+      if (scheduled) return;
+      scheduled = true;
+      animationFrameId = window.requestAnimationFrame(() => {
+        scheduled = false;
+        applyRepair();
+      });
+    };
+
     const observer = new MutationObserver(() => {
-      applyRepair();
+      scheduleRepair();
     });
 
     observer.observe(document.body, {
       subtree: true,
       childList: true,
-      characterData: true,
       attributes: true,
       attributeFilter: ['title', 'placeholder', 'aria-label'],
     });
@@ -335,6 +349,7 @@ export default function App() {
 
     return () => {
       observer.disconnect();
+      window.cancelAnimationFrame(animationFrameId);
       window.alert = originalAlert;
       window.confirm = originalConfirm;
     };
@@ -578,6 +593,11 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
+  const deferredInventorySearchQuery = useDeferredValue(searchQuery);
+  const deferredSalesSearchTerm = useDeferredValue(salesSearchTerm);
+  const deferredSelectorSearch = useDeferredValue(selectorSearch);
+  const deferredOnlineOrderSearchQuery = useDeferredValue(onlineOrderSearchQuery);
+
   const barcodeBuffer = useRef('');
   const lastKeyTime = useRef(0);
 
@@ -601,6 +621,45 @@ export default function App() {
     const combined = Array.from(new Set([...fromProducts, ...predefinedCategories]));
     return combined.sort();
   }, [products, predefinedCategories]);
+
+  const activeProducts = useMemo(() => products.filter(p => !p.isHeader), [products]);
+
+  const productByNormalizedSku = useMemo(() => {
+    const entries = activeProducts.map(product => [product.sku.toLowerCase(), product] as const);
+    return new Map(entries);
+  }, [activeProducts]);
+
+  const lowStockProducts = useMemo(() => (
+    [...activeProducts]
+      .filter(product => product.quantity <= product.minStock)
+      .sort((a, b) => (b.recommendedStock - b.quantity) - (a.recommendedStock - a.quantity))
+  ), [activeProducts]);
+
+  const inventoryCategoryOptions = useMemo(() => {
+    const productCategories = Array.from(new Set(activeProducts.map(p => p.category).filter(Boolean)))
+      .filter(category => category && category !== 'Tất cả');
+    return ['Tất cả', ...productCategories];
+  }, [activeProducts]);
+
+  const filteredSalesProducts = useMemo(() => {
+    const normalizedSearch = normalizeSearchValue(deferredSalesSearchTerm);
+    if (!normalizedSearch) return activeProducts;
+
+    return activeProducts.filter(product =>
+      product.name.toLowerCase().includes(normalizedSearch) ||
+      product.sku.toLowerCase().includes(normalizedSearch)
+    );
+  }, [activeProducts, deferredSalesSearchTerm]);
+
+  const filteredSelectorProducts = useMemo(() => {
+    const normalizedSearch = normalizeSearchValue(deferredSelectorSearch);
+    if (!normalizedSearch) return activeProducts;
+
+    return activeProducts.filter(product =>
+      product.name.toLowerCase().includes(normalizedSearch) ||
+      product.sku.toLowerCase().includes(normalizedSearch)
+    );
+  }, [activeProducts, deferredSelectorSearch]);
 
   const [historySettings, setHistorySettings] = useState(() => {
     const saved = localStorage.getItem('neostock_history_settings');
@@ -717,6 +776,16 @@ export default function App() {
       id: mvd // Use MV? as the ID for the group
     })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [transactions, onlineDateFilter, onlineDateRange]);
+
+  const filteredOnlineOrders = useMemo(() => {
+    const normalizedSearch = normalizeSearchValue(deferredOnlineOrderSearchQuery);
+    if (!normalizedSearch) return groupedOnlineOrders.slice(0, 20);
+
+    return groupedOnlineOrders.filter(order =>
+      order.shippingCode.toLowerCase().includes(normalizedSearch) ||
+      order.transactions.some(t => t.productName.toLowerCase().includes(normalizedSearch))
+    ).slice(0, 20);
+  }, [deferredOnlineOrderSearchQuery, groupedOnlineOrders]);
 
   const analyticsData = useMemo(() => {
     // 1. Filter transactions by date range
@@ -1130,7 +1199,6 @@ export default function App() {
   }, []);
 
   const stats = useMemo(() => {
-    const activeProducts = products.filter(p => !p.isHeader);
     const totalItems = activeProducts.reduce((acc, p) => acc + p.quantity, 0);
     const lowStockItems = activeProducts.filter(p => p.quantity <= p.minStock).length;
     const totalValue = activeProducts.reduce((acc, p) => acc + (p.quantity * p.price), 0);
@@ -1141,15 +1209,18 @@ export default function App() {
     }).length;
 
     return { totalItems, lowStockItems, totalValue, recentTransCount };
-  }, [products, transactions]);
+  }, [activeProducts, transactions]);
 
   const sortedProducts = useMemo(() => {
-    const filtered = products.filter(p =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku.includes(searchQuery) ||
-      p.variant?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.isHeader && p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+    const normalizedSearch = normalizeSearchValue(deferredInventorySearchQuery);
+    const filtered = normalizedSearch
+      ? products.filter(p =>
+        p.name.toLowerCase().includes(normalizedSearch) ||
+        p.sku.toLowerCase().includes(normalizedSearch) ||
+        p.variant?.toLowerCase().includes(normalizedSearch) ||
+        (p.isHeader && p.name.toLowerCase().includes(normalizedSearch))
+      )
+      : products;
 
     switch (sortBy) {
       case 'name':
@@ -1161,7 +1232,7 @@ export default function App() {
       default:
         return [...filtered].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
     }
-  }, [products, searchQuery, sortBy]);
+  }, [deferredInventorySearchQuery, products, sortBy]);
 
   const moveProduct = async (id: string, direction: 'up' | 'down') => {
     if (sortBy !== 'manual' || isOrderLocked || !user) return;
@@ -2700,10 +2771,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                          {products
-                            .filter(p => !p.isHeader && p.quantity <= p.minStock)
-                            .sort((a, b) => (b.recommendedStock - b.quantity) - (a.recommendedStock - a.quantity))
-                            .map(product => (
+                          {lowStockProducts.map(product => (
                               <tr key={product.id} className="hover:bg-white/5 transition-colors group">
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-3">
@@ -2775,7 +2843,7 @@ export default function App() {
                             ))}
                         </tbody>
                       </table>
-                      {products.filter(p => !p.isHeader && p.quantity <= p.minStock).length === 0 && (
+                      {lowStockProducts.length === 0 && (
                         <div className="text-center py-12 text-gray-500">
                           <Check className="mx-auto mb-2 text-green-400" size={32} />
                           <p>Tất cả sản phẩm đều đủ hàng.</p>
@@ -3430,7 +3498,7 @@ export default function App() {
                               onChange={(e) => setSalesSearchTerm(e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' && salesSearchTerm) {
-                                  const exactMatch = products.find(p => p.sku.toLowerCase() === salesSearchTerm.toLowerCase() && !p.isHeader);
+                                  const exactMatch = productByNormalizedSku.get(normalizeSearchValue(salesSearchTerm));
                                   if (exactMatch) {
                                     addToCart(exactMatch);
                                     setSalesSearchTerm('');
@@ -3444,12 +3512,7 @@ export default function App() {
                         </div>
 
                         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 overflow-y-auto pr-1 custom-scrollbar flex-1 pb-4">
-                          {products
-                            .filter(p => !p.isHeader && (
-                              p.name.toLowerCase().includes(salesSearchTerm.toLowerCase()) ||
-                              p.sku.toLowerCase().includes(salesSearchTerm.toLowerCase())
-                            ))
-                            .map(product => (
+                          {filteredSalesProducts.map(product => (
                               <button
                                 key={product.id}
                                 onClick={() => addToCart(product)}
@@ -3873,7 +3936,7 @@ export default function App() {
                                     onChange={(e) => setSalesSearchTerm(e.target.value)}
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter' && salesSearchTerm) {
-                                        const exactMatch = products.find(p => p.sku.toLowerCase() === salesSearchTerm.toLowerCase() && !p.isHeader);
+                                        const exactMatch = productByNormalizedSku.get(normalizeSearchValue(salesSearchTerm));
                                         if (exactMatch) {
                                           addToCart(exactMatch);
                                           setSalesSearchTerm('');
@@ -3888,9 +3951,7 @@ export default function App() {
                               <div className="relative w-full">
                                 {salesSearchTerm && (
                                   <div className="absolute top-0 left-0 right-0 mt-2 glass rounded-2xl border border-white/10 shadow-2xl z-50 max-h-[300px] overflow-y-auto custom-scrollbar">
-                                    {products
-                                      .filter(p => !p.isHeader && (p.name.toLowerCase().includes(salesSearchTerm.toLowerCase()) || p.sku.toLowerCase().includes(salesSearchTerm.toLowerCase())))
-                                      .map(product => (
+                                    {filteredSalesProducts.map(product => (
                                         <button
                                           key={product.id}
                                           onClick={() => {
@@ -4170,13 +4231,7 @@ export default function App() {
                           )}
 
                           <div className="flex-1 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
-                            {groupedOnlineOrders
-                              .filter(order =>
-                                order.shippingCode.toLowerCase().includes(onlineOrderSearchQuery.toLowerCase()) ||
-                                order.transactions.some(t => t.productName.toLowerCase().includes(onlineOrderSearchQuery.toLowerCase()))
-                              )
-                              .slice(0, 20)
-                              .map(order => (
+                            {filteredOnlineOrders.map(order => (
                                 <div
                                   key={order.id}
                                   onClick={() => {
@@ -4258,10 +4313,7 @@ export default function App() {
                   <div className="flex flex-col gap-3 w-full md:w-auto">
                     {/* Category Scroller (Mobile) */}
                     <div className="flex md:hidden items-center gap-2 overflow-x-auto pb-1 hide-scrollbar">
-                      {(() => {
-                        const productCats = Array.from(new Set(products.filter(p => !p.isHeader && p.category).map(p => p.category)))
-                          .filter(c => c && c !== 'Tất cả');
-                        return ['Tất cả', ...productCats].map((cat, idx) => (
+                      {inventoryCategoryOptions.map((cat, idx) => (
                           <button
                             key={`mobile-cat-${cat}-${idx}`}
                             onClick={() => setSearchQuery(cat === 'Tất cả' ? '' : cat)}
@@ -4274,8 +4326,7 @@ export default function App() {
                           >
                             {cat}
                           </button>
-                        ));
-                      })()}
+                        ))}
                     </div>
 
                     <div className="relative">
@@ -7590,12 +7641,7 @@ export default function App() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
-                  {products
-                    .filter(p => !p.isHeader && (
-                      p.name.toLowerCase().includes(selectorSearch.toLowerCase()) ||
-                      p.sku.toLowerCase().includes(selectorSearch.toLowerCase())
-                    ))
-                    .map(product => (
+                  {filteredSelectorProducts.map(product => (
                       <button
                         key={product.id}
                         onClick={() => handleAddSelectedProduct(product)}
@@ -7634,10 +7680,7 @@ export default function App() {
                       </button>
                     ))}
 
-                  {products.filter(p => !p.isHeader && (
-                    p.name.toLowerCase().includes(selectorSearch.toLowerCase()) ||
-                    p.sku.toLowerCase().includes(selectorSearch.toLowerCase())
-                  )).length === 0 && (
+                  {filteredSelectorProducts.length === 0 && (
                       <div className="text-center py-12 text-gray-500">
                         <p>Không tìm thấy sản phẩm nào.</p>
                       </div>
