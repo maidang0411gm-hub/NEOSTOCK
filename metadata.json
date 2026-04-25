@@ -1,0 +1,5 @@
+{
+  "name": "NeoStock Inventory",
+  "description": "Futuristic inventory management system with integrated barcode scanning for seamless stock control.",
+  "requestFramePermissions": ["camera"]
+}
