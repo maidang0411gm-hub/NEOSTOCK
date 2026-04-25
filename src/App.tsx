@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useDeferredValue, Component } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useDeferredValue, startTransition, Component } from 'react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -156,6 +156,10 @@ function formatCurrency(amount: number) {
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
+}
+
+function sortProductsByOrder(items: Product[]) {
+  return [...items].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 }
 
 // Auth Component
@@ -600,6 +604,8 @@ export default function App() {
 
   const barcodeBuffer = useRef('');
   const lastKeyTime = useRef(0);
+  const serverProductsRef = useRef<Product[]>([]);
+  const reorderSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [imageUploadMethod, setImageUploadMethod] = useState<'device' | 'url'>('device');
   const [isKeyboardEnabled, setIsKeyboardEnabled] = useState(() => {
@@ -1168,8 +1174,9 @@ export default function App() {
 
     const productsQuery = query(collection(db, 'products'), where('userId', '==', user.uid));
     const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
-      const productsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
-      setProducts(productsData.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
+      const productsData = sortProductsByOrder(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product)));
+      serverProductsRef.current = productsData;
+      setProducts(productsData);
     }, (error) => handleDataError(error, OperationType.LIST, 'products'));
 
     const transactionsQuery = query(collection(db, 'transactions'), where('userId', '==', user.uid));
@@ -1179,6 +1186,9 @@ export default function App() {
     }, (error) => handleDataError(error, OperationType.LIST, 'transactions'));
 
     return () => {
+      if (reorderSaveTimeoutRef.current) {
+        clearTimeout(reorderSaveTimeoutRef.current);
+      }
       unsubscribeProducts();
       unsubscribeTransactions();
     };
@@ -1234,29 +1244,39 @@ export default function App() {
     }
   }, [deferredInventorySearchQuery, products, sortBy]);
 
+  const applyProductsOptimistically = (updater: (prev: Product[]) => Product[]) => {
+    startTransition(() => {
+      setProducts(prev => sortProductsByOrder(updater(prev)));
+    });
+  };
+
+  const persistProductOrder = async (orderedProducts: Product[]) => {
+    await Promise.all(
+      orderedProducts.map((product, idx) => updateDoc(doc(db, 'products', product.id), { sortOrder: idx })),
+    );
+  };
+
   const moveProduct = async (id: string, direction: 'up' | 'down') => {
     if (sortBy !== 'manual' || isOrderLocked || !user) return;
 
-    const index = products.findIndex(p => p.id === id);
+    const orderedProducts = sortProductsByOrder(products);
+    const previousProducts = products;
+    const index = orderedProducts.findIndex(p => p.id === id);
     if (index === -1) return;
     if (direction === 'up' && index === 0) return;
-    if (direction === 'down' && index === products.length - 1) return;
+    if (direction === 'down' && index === orderedProducts.length - 1) return;
 
-    const newProducts = [...products].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    const newProducts = [...orderedProducts];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    [newProducts[index], newProducts[targetIndex]] = [newProducts[targetIndex], newProducts[index]];
+    const optimisticProducts = newProducts.map((product, idx) => ({ ...product, sortOrder: idx }));
+
+    applyProductsOptimistically(() => optimisticProducts);
 
     try {
-      const p1 = newProducts[index];
-      const p2 = newProducts[targetIndex];
-
-      const p1Ref = doc(db, 'products', p1.id);
-      const p2Ref = doc(db, 'products', p2.id);
-
-      await Promise.all([
-        updateDoc(p1Ref, { sortOrder: p2.sortOrder }),
-        updateDoc(p2Ref, { sortOrder: p1.sortOrder })
-      ]);
+      await persistProductOrder(optimisticProducts);
     } catch (error) {
+      setProducts(previousProducts.length > 0 ? previousProducts : serverProductsRef.current);
       handleDataError(error, OperationType.UPDATE, 'products/move');
     }
   };
@@ -1590,18 +1610,24 @@ export default function App() {
     setIsProductSelectorOpen(false);
   };
 
-  const handleReorder = async (newOrder: Product[]) => {
+  const handleReorder = (newOrder: Product[]) => {
     if (sortBy !== 'manual' || searchQuery || isOrderLocked || !user) return;
 
-    try {
-      const batch = newOrder.map((p, idx) => {
-        const productRef = doc(db, 'products', p.id);
-        return updateDoc(productRef, { sortOrder: idx });
-      });
-      await Promise.all(batch);
-    } catch (error) {
-      handleDataError(error, OperationType.UPDATE, 'products/reorder');
+    const optimisticOrder = newOrder.map((product, idx) => ({ ...product, sortOrder: idx }));
+    applyProductsOptimistically(() => optimisticOrder);
+
+    if (reorderSaveTimeoutRef.current) {
+      clearTimeout(reorderSaveTimeoutRef.current);
     }
+
+    reorderSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await persistProductOrder(optimisticOrder);
+      } catch (error) {
+        setProducts(serverProductsRef.current);
+        handleDataError(error, OperationType.UPDATE, 'products/reorder');
+      }
+    }, 250);
   };
 
   const handleScan = async (sku: string) => {
@@ -1769,11 +1795,15 @@ export default function App() {
 
   const handleDeleteProduct = async (id: string) => {
     if (!user) return;
+    const previousProducts = products;
+    setDeletingProduct(null);
+    setContextMenu(null);
+    applyProductsOptimistically(prev => prev.filter(product => product.id !== id));
+
     try {
       await deleteDoc(doc(db, 'products', id));
-      setDeletingProduct(null);
-      setContextMenu(null);
     } catch (error) {
+      setProducts(previousProducts);
       handleDataError(error, OperationType.DELETE, `products/${id}`);
     }
   };
@@ -1785,15 +1815,20 @@ export default function App() {
     // but for now let's just confirm and use writeBatch.
     if (!window.confirm(`Bạn có chắc chắn muốn xóa ${checkedProducts.length} sản phẩm đã chọn?`)) return;
 
+    const idsToDelete = new Set<string>(checkedProducts);
+    const previousProducts = products;
+    applyProductsOptimistically(prev => prev.filter(product => !idsToDelete.has(product.id)));
+    setCheckedProducts([]);
+
     const batch = writeBatch(db);
-    checkedProducts.forEach(id => {
+    idsToDelete.forEach(id => {
       batch.delete(doc(db, 'products', id));
     });
 
     try {
       await batch.commit();
-      setCheckedProducts([]);
     } catch (error) {
+      setProducts(previousProducts);
       handleDataError(error, OperationType.DELETE, 'products/batch');
     }
   };
@@ -1802,13 +1837,18 @@ export default function App() {
     if (!renamingProduct || !user) return;
     const productId = renamingProduct.id;
     const newName = renameValue;
+    const previousProducts = products;
     setRenamingProduct(null);
     setRenameValue('');
     setContextMenu(null);
+    applyProductsOptimistically(prev => prev.map(product => (
+      product.id === productId ? { ...product, name: newName } : product
+    )));
     try {
       const productRef = doc(db, 'products', productId);
       await updateDoc(productRef, { name: newName });
     } catch (error) {
+      setProducts(previousProducts);
       handleDataError(error, OperationType.UPDATE, `products/${productId}`);
     }
   };
@@ -2015,8 +2055,11 @@ export default function App() {
 
   const addHeaderRow = async (relativeToProduct: Product, position: 'above' | 'below') => {
     if (!user) return;
+    const previousProducts = products;
     try {
-      const newHeader: Omit<Product, 'id'> = {
+      const newHeaderRef = doc(collection(db, 'products'));
+      const newHeader: Product = {
+        id: newHeaderRef.id,
         sku: '',
         name: 'TIÊU ĐỀ MỚI',
         category: '',
@@ -2031,30 +2074,33 @@ export default function App() {
         userId: user.uid
       };
 
-      const sorted = [...products].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      const sorted = sortProductsByOrder(products);
       const relativeIndex = sorted.findIndex(p => p.id === relativeToProduct.id);
 
       if (relativeIndex === -1) return;
 
       const newSorted = [...sorted];
       if (position === 'above') {
-        newSorted.splice(relativeIndex, 0, newHeader as any);
+        newSorted.splice(relativeIndex, 0, newHeader);
       } else {
-        newSorted.splice(relativeIndex + 1, 0, newHeader as any);
+        newSorted.splice(relativeIndex + 1, 0, newHeader);
       }
 
-      const batch = newSorted.map((p, idx) => {
-        if ('id' in p) {
-          const productRef = doc(db, 'products', p.id);
-          return updateDoc(productRef, { sortOrder: idx });
-        } else {
-          return addDoc(collection(db, 'products'), { ...p, sortOrder: idx });
-        }
-      });
-      await Promise.all(batch);
       setContextMenu(null);
       setSortBy('manual');
+      const optimisticProducts = newSorted.map((product, idx) => ({ ...product, sortOrder: idx }));
+      applyProductsOptimistically(() => optimisticProducts);
+
+      await Promise.all(
+        optimisticProducts.map((product, idx) => {
+          if (product.id === newHeader.id) {
+            return setDoc(newHeaderRef, { ...product, sortOrder: idx });
+          }
+          return updateDoc(doc(db, 'products', product.id), { sortOrder: idx });
+        }),
+      );
     } catch (error) {
+      setProducts(previousProducts);
       handleDataError(error, OperationType.CREATE, 'products/header');
     }
   };
@@ -2289,11 +2335,15 @@ export default function App() {
   const handleAddProduct = async () => {
     if (!user) return;
     const productData = { ...formData };
+    const previousProducts = products;
     setIsModalOpen(null);
+    setSelectedProduct(null);
     setFormData({ quantity: 1, note: '', name: '', sku: '', category: '', variant: '', minStock: 5, recommendedStock: 10, price: 0, costPrice: 0, imageUrl: '' });
 
     try {
-      const newProduct: Omit<Product, 'id'> = {
+      const newProductRef = doc(collection(db, 'products'));
+      const newProduct: Product = {
+        id: newProductRef.id,
         sku: productData.sku,
         name: productData.name,
         category: productData.category,
@@ -2310,8 +2360,10 @@ export default function App() {
         userId: user.uid
       };
 
-      await addDoc(collection(db, 'products'), newProduct);
+      applyProductsOptimistically(prev => [...prev, newProduct]);
+      await setDoc(newProductRef, newProduct);
     } catch (error) {
+      setProducts(previousProducts);
       handleDataError(error, OperationType.CREATE, 'products');
     }
   };
@@ -2339,12 +2391,14 @@ export default function App() {
 
     const productId = selectedProduct.id;
     const productData = { ...formData };
+    const previousProducts = products;
     setIsModalOpen(null);
+    setSelectedProduct(null);
     setFormData({ quantity: 1, note: '', name: '', sku: '', category: '', variant: '', minStock: 5, recommendedStock: 10, price: 0, costPrice: 0, imageUrl: '' });
 
     try {
-      const productRef = doc(db, 'products', productId);
-      await updateDoc(productRef, {
+      const updatedProduct: Product = {
+        ...selectedProduct,
         sku: productData.sku,
         name: productData.name,
         category: productData.category,
@@ -2357,8 +2411,28 @@ export default function App() {
         imageUrl: productData.imageUrl,
         note: productData.note,
         lastUpdated: new Date().toISOString()
+      };
+      applyProductsOptimistically(prev => prev.map(product => (
+        product.id === productId ? updatedProduct : product
+      )));
+
+      const productRef = doc(db, 'products', productId);
+      await updateDoc(productRef, {
+        sku: updatedProduct.sku,
+        name: updatedProduct.name,
+        category: updatedProduct.category,
+        variant: updatedProduct.variant,
+        quantity: updatedProduct.quantity,
+        minStock: updatedProduct.minStock,
+        recommendedStock: updatedProduct.recommendedStock,
+        price: updatedProduct.price,
+        costPrice: updatedProduct.costPrice,
+        imageUrl: updatedProduct.imageUrl,
+        note: updatedProduct.note,
+        lastUpdated: updatedProduct.lastUpdated
       });
     } catch (error) {
+      setProducts(previousProducts);
       handleDataError(error, OperationType.UPDATE, `products/${productId}`);
     }
   };
