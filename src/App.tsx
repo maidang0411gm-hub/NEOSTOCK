@@ -96,7 +96,6 @@ import { BarcodeScanner } from './components/BarcodeScanner';
 import { FloatingKeyboard } from './components/FloatingKeyboard';
 import { Product, Transaction } from './types';
 import { cn } from './lib/utils';
-import { fixVietnameseText, repairVietnameseUi } from './lib/fixVietnamese';
 
 // Error handling for remote data operations
 enum OperationType {
@@ -318,34 +317,7 @@ export default function App() {
     localStorage.setItem('neostock_theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  useEffect(() => {
-    const applyRepair = () => repairVietnameseUi();
-    applyRepair();
 
-    const observer = new MutationObserver(() => {
-      applyRepair();
-    });
-
-    observer.observe(document.body, {
-      subtree: true,
-      childList: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ['title', 'placeholder', 'aria-label'],
-    });
-
-    const originalAlert = window.alert.bind(window);
-    const originalConfirm = window.confirm.bind(window);
-
-    window.alert = ((message?: string) => originalAlert(typeof message === 'string' ? fixVietnameseText(message) : message)) as typeof window.alert;
-    window.confirm = ((message?: string) => originalConfirm(typeof message === 'string' ? fixVietnameseText(message) : message)) as typeof window.confirm;
-
-    return () => {
-      observer.disconnect();
-      window.alert = originalAlert;
-      window.confirm = originalConfirm;
-    };
-  }, []);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -1864,14 +1836,6 @@ export default function App() {
         }
 
         await addDoc(collection(db, 'transactions'), transactionData);
-
-        if (supabase) {
-          await supabase.from('transactions').insert(transactionData);
-          await supabase.from('products').update({
-            quantity: newQuantity,
-            lastUpdated: timestamp
-          }).eq('id', item.product.id);
-        }
       }
 
       setCart([]);
@@ -1882,7 +1846,7 @@ export default function App() {
       setDirectPaymentMethod('cash');
       setDirectCashReceived(0);
       setIsDirectNoteOpen(false);
-      alert(`?a hoan thanh ??n hang! #${finalOrderNum}`);
+      alert(`Đã hoàn thành đơn hàng! #${finalOrderNum}`);
     } catch (error) {
       handleDataError(error, OperationType.WRITE, 'sales/complete');
     }
@@ -2505,7 +2469,7 @@ export default function App() {
               <button
                 onClick={() => setIsMobileMenuOpen(true)}
                 className="p-2 bg-white/5 rounded-xl text-gray-400 md:hidden hover:bg-white/10 active:scale-95 transition-all outline-none"
-                title="M? Menu"
+                title="Mở Menu"
               >
                 <div className="w-5 h-5 flex flex-col justify-center gap-1">
                   <span className="w-5 h-0.5 bg-current rounded-full" />
@@ -2892,7 +2856,7 @@ export default function App() {
                       )}
                     >
                       <Check size={20} />
-                      ?a {lastScannedProduct.type === 'in' ? 'nh?p' : 'xu?t'} {lastScannedProduct.quantity}: {lastScannedProduct.name}
+                      Đã {lastScannedProduct.type === 'in' ? 'nhập' : 'xuất'} {lastScannedProduct.quantity}: {lastScannedProduct.name}
                       {lastScannedProduct.variant && (
                         <span className="ml-2 px-1.5 py-0.5 rounded bg-white/20 text-[10px] uppercase">{lastScannedProduct.variant}</span>
                       )}
