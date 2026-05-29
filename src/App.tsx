@@ -1783,14 +1783,7 @@ export default function App() {
   };
 
   const completeSale = async () => {
-    if (!user) {
-      alert("Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn. Vui lòng đăng nhập lại để thanh toán!");
-      return;
-    }
-    if (cart.length === 0) {
-      alert("Giỏ hàng của bạn đang trống!");
-      return;
-    }
+    if (!user || cart.length === 0) return;
 
     // Calculate daily order number in DDMMYYYYNNNN format
     const now = new Date();
@@ -1845,6 +1838,7 @@ export default function App() {
           timestamp: timestamp,
           userId: user.uid,
           orderNumber: finalOrderNum,
+          orderSource: salesSubTab,
           note: `Bán hàng ${salesSubTab === 'direct' ? 'Trực tiếp' : 'Online'}${salesSubTab === 'online' && shippingCode ? ' [MVĐ: ' + shippingCode + ']' : ''}${currentNote ? ' - ' + currentNote : ''}`
         };
 
@@ -1867,10 +1861,8 @@ export default function App() {
       setDirectPaymentMethod('cash');
       setDirectCashReceived(0);
       setIsDirectNoteOpen(false);
-      alert(`Đã hoàn thành đơn hàng thành công! Mã đơn: #${finalOrderNum}`);
-    } catch (error: any) {
-      console.error('Lỗi chi tiết khi thanh toán:', error);
-      alert(`Thanh toán thất bại! Lỗi hệ thống: ${error.message || error}`);
+      alert(`Đã hoàn thành đơn hàng! #${finalOrderNum}`);
+    } catch (error) {
       handleDataError(error, OperationType.WRITE, 'sales/complete');
     }
   };
@@ -3490,7 +3482,7 @@ export default function App() {
                                 <div className="p-2 flex flex-col flex-1 gap-1">
                                   <h4 className="font-bold text-[10px] md:text-xs line-clamp-2 uppercase tracking-tight leading-tight">{product.name}</h4>
                                   <div className="flex items-center justify-between mt-auto pt-1">
-                                    <span className="text-[10px] md:text-xs font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}đ</span>
+                                    <span className="text-[10px] md:text-xs font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}?</span>
                                     {product.variant && (
                                       <span className="text-[7px] px-1.5 py-0.5 rounded bg-neon-purple/10 text-neon-purple font-bold border border-neon-purple/20 truncate max-w-[50px]">
                                         {product.variant}
@@ -3648,9 +3640,9 @@ export default function App() {
                                               {item.product.variant}
                                             </span>
                                           )}
-                                          <span className="text-white/40 font-bold">{item.product.price.toLocaleString('vi-VN')}đ</span>
+                                          <span className="text-white/40 font-bold">{item.product.price.toLocaleString('vi-VN')}?</span>
                                           {item.unitPrice !== item.product.price && (
-                                            <span className="text-neon-blue font-black bg-neon-blue/10 px-1 rounded">Giá mới: {item.unitPrice.toLocaleString('vi-VN')}đ</span>
+                                            <span className="text-neon-blue font-black bg-neon-blue/10 px-1 rounded">Giá mới: {item.unitPrice.toLocaleString('vi-VN')}?</span>
                                           )}
                                         </div>
                                       </div>
@@ -3675,11 +3667,11 @@ export default function App() {
 
                                       <div className="flex flex-col items-end min-w-[80px] md:min-w-[100px]">
                                         <span className="font-black text-xs md:text-lg text-neon-blue neon-text leading-none">
-                                          {itemTotal.toLocaleString('vi-VN')}đ
+                                          {itemTotal.toLocaleString('vi-VN')}?
                                         </span>
                                         <div className="flex flex-col items-end mt-0.5">
-                                          {discountAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-red-500 uppercase tracking-tighter">-{discountAmount.toLocaleString('vi-VN')}đ</span>}
-                                          {surchargeAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-green-500 uppercase tracking-tighter">+{surchargeAmount.toLocaleString('vi-VN')}đ</span>}
+                                          {discountAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-red-500 uppercase tracking-tighter">-{discountAmount.toLocaleString('vi-VN')}?</span>}
+                                          {surchargeAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-green-500 uppercase tracking-tighter">+{surchargeAmount.toLocaleString('vi-VN')}?</span>}
                                         </div>
                                       </div>
 
@@ -3732,12 +3724,11 @@ export default function App() {
                                   <ChevronUp size={14} className={cn("transition-transform duration-300", isCartExtraVisible ? "rotate-0" : "rotate-180")} />
                                 </button>
                                 <span className="text-[10px] md:text-xs font-black uppercase tracking-[0.1em] text-gray-300">
-                                  Tổng cộng: <span className="text-[8px] text-gray-500 ml-1">({cart.reduce((a, b) => a + b.quantity, 0)} MÓN)</span>
+                                  Tổng cộng: <span className="text-[8px] text-gray-500 ml-1">({cart.reduce((a, b) => a + b.quantity, 0)} MON)</span>
                                 </span>
                               </div>
                               <span className="text-lg md:text-2xl font-black text-neon-blue neon-text leading-none">
-                                {currentTotal.toLocaleString('vi-VN')}
-                                <span className="text-[20px] text-neon-blue ml-1">đ</span>
+                                {currentTotal.toLocaleString('vi-VN')}?
                               </span>
                             </div>
                           </div>
@@ -3767,7 +3758,7 @@ export default function App() {
                                         onClick={() => setDirectCashReceived(currentTotal)}
                                         className="col-span-3 py-1.5 rounded-lg bg-neon-blue/10 border border-neon-blue/30 text-neon-blue text-[9px] font-bold hover:bg-neon-blue/20 transition-all active:scale-95 uppercase tracking-widest"
                                       >
-                                        Khách Trả Đúng Bằng: {currentTotal.toLocaleString('vi-VN')}đ
+                                        Khách Trả Đúng Bằng: {currentTotal.toLocaleString('vi-VN')}VNĐ
                                       </button>
                                     </div>
 
@@ -3786,7 +3777,7 @@ export default function App() {
                                             onChange={(e) => setDirectCashReceived(Number(e.target.value))}
                                             className="w-full glass px-3 py-2 rounded-xl text-xs font-black text-green-400 focus:outline-none focus:ring-2 focus:ring-green-400/30 border border-white/5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                           />
-                                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-bold text-gray-500">đ</span>
+                                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-bold text-gray-500">VND</span>
                                         </div>
                                       </div>
                                       <div className="space-y-1.5">
@@ -3801,7 +3792,7 @@ export default function App() {
                                           )}>
                                             {Math.max(0, (directCashReceived as number) - currentTotal).toLocaleString('vi-VN')}
                                           </span>
-                                          <span className="text-[8px] font-bold text-gray-500">đ</span>
+                                          <span className="text-[8px] font-bold text-gray-500">VND</span>
                                         </div>
                                       </div>
                                     </div>
@@ -4032,7 +4023,7 @@ export default function App() {
                                             {item.product.variant}
                                           </span>
                                         )}
-                                        <span className="text-[10px] text-neon-blue font-bold">{finalPrice.toLocaleString('vi-VN')}đ</span>
+                                        <span className="text-[10px] text-neon-blue font-bold">{finalPrice.toLocaleString('vi-VN')}?</span>
                                       </div>
                                     </div>
                                   </div>
@@ -4071,12 +4062,12 @@ export default function App() {
                               <div className="glass p-4 rounded-2xl border-white/5 bg-gradient-to-br from-neon-blue/5 to-transparent">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="text-xs text-gray-400">Tạm tính:</span>
-                                  <span className="text-sm font-medium">{currentTotal.toLocaleString('vi-VN')}đ</span>
+                                  <span className="text-sm font-medium">{currentTotal.toLocaleString('vi-VN')}?</span>
                                 </div>
                                 <div className="flex items-center justify-between pt-2 border-t border-white/10">
                                   <span className="text-sm font-bold">Tổng thanh toán:</span>
                                   <span className="text-2xl font-black text-neon-blue">
-                                    {currentTotal.toLocaleString('vi-VN')}đ
+                                    {currentTotal.toLocaleString('vi-VN')}?
                                   </span>
                                 </div>
                               </div>
@@ -4563,7 +4554,7 @@ export default function App() {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 font-mono text-sm">
-                                  {product.price.toLocaleString('vi-VN')}đ
+                                  {product.price.toLocaleString('vi-VN')}?
                                 </td>
                                 <td className="px-6 py-4 text-xs text-gray-500">
                                   {new Date(product.lastUpdated).toLocaleDateString('vi-VN')}
@@ -4983,26 +4974,27 @@ export default function App() {
 
                 <div className="glass rounded-[2rem] md:rounded-3xl overflow-hidden border border-white/10">
                   <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full text-left table-fixed">
                       <thead>
                         <tr className="border-b border-white/10 bg-white/5">
-                          <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Mã đơn / lô</th>
-                          <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Thời gian</th>
-                          <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Thanh toán</th>
-                          <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Danh mục</th>
-                          <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider text-center">Sản phẩm</th>
-                          <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Biến thể</th>
-                          <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Loại</th>
-                          <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider text-right">Đơn giá</th>
-                          <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider text-center">Số lượng</th>
-                          <th className="px-6 py-4 font-bold text-sm uppercase tracking-wider">Ghi chú</th>
+                          <th className="px-3 py-4 font-bold text-sm uppercase tracking-wider w-[12%] min-w-[100px]">Mã đơn / lô</th>
+                          <th className="px-2 py-4 font-bold text-sm uppercase tracking-wider w-[10%] min-w-[90px]">Thời gian</th>
+                          <th className="px-2 py-4 font-bold text-sm uppercase tracking-wider w-[10%] min-w-[95px]">Thanh toán</th>
+                          <th className="px-2 py-4 font-bold text-sm uppercase tracking-wider w-[10%] min-w-[100px]">Danh mục</th>
+                          <th className="px-4 py-4 font-bold text-sm uppercase tracking-wider text-left w-[36%] min-w-[350px]">Sản phẩm</th>
+                          <th className="px-2 py-4 font-bold text-sm uppercase tracking-wider w-[8%] min-w-[80px]">Biến thể</th>
+                          <th className="px-2 py-4 font-bold text-sm uppercase tracking-wider text-center w-[6%] min-w-[60px]">Loại</th>
+                          <th className="px-2 py-4 font-bold text-sm uppercase tracking-wider text-right w-[8%] min-w-[90px]">Đơn giá</th>
+                          <th className="px-2 py-4 font-bold text-sm uppercase tracking-wider text-center w-[6%] min-w-[60px]">Số lượng</th>
+                          <th className="px-3 py-4 font-bold text-sm uppercase tracking-wider w-[10%] min-w-[100px]">Ghi chú</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
                         {groupedHistoryTransactions.map(group => {
                           const isSingle = group.transactions.length === 1;
                           const firstTrans = group.transactions[0];
-                          const product = products.find(p => p.id === firstTrans.productId);
+                          const product = products.find(p => p.id === firstTrans.productId || p.id === (firstTrans as any).productId);
+                          const displaySku = product?.sku || firstTrans.productSku || (firstTrans as any).productSku || '---';
 
                           return (
                             <React.Fragment key={group.id}>
@@ -5013,7 +5005,7 @@ export default function App() {
                                   group.transactions.length > 1 ? "cursor-pointer" : ""
                                 )}
                               >
-                                <td className="px-6 py-4 font-mono text-sm">
+                                <td className="px-3 py-4 font-mono text-sm">
                                   <div className="flex items-center gap-2">
                                     {group.transactions.length > 1 && (
                                       <ChevronDown
@@ -5037,13 +5029,13 @@ export default function App() {
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 text-xs text-gray-400 font-mono">
+                                <td className="px-2 py-4 text-xs text-gray-400 font-mono">
                                   {(() => {
                                     const d = new Date(group.timestamp);
                                     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
                                   })()}
                                 </td>
-                                <td className="px-6 py-4">
+                                <td className="px-2 py-4">
                                   {group.paymentMethod ? (
                                     <div className="flex items-center gap-1.5">
                                       <div className={cn(
@@ -5061,23 +5053,23 @@ export default function App() {
                                     </div>
                                   ) : <span className="text-gray-600 font-mono text-xs">---</span>}
                                 </td>
-                                <td className="px-6 py-4 text-xs text-gray-400 uppercase tracking-tighter">
+                                <td className="px-2 py-4 text-xs text-gray-400 uppercase tracking-tighter truncate" title={isSingle ? (product?.category || '---') : 'Đa danh mục'}>
                                   {isSingle ? (product?.category || '---') : <span className="italic">Đa danh mục</span>}
                                 </td>
 
-                                <td className="px-6 py-4 text-left min-w-[320px] max-w-[450px]">
+                                <td className="px-4 py-4 text-left">
                                   {group.batchId ? (
                                     <div className="flex items-center gap-2">
                                       <Package size={14} className="text-neon-purple shrink-0" />
-                                      <span className="text-gray-400 font-bold uppercase tracking-tighter text-[10px]">{group.transactions.length} MẶT HÀNG</span>
+                                      <span className="text-gray-400 font-bold uppercase tracking-tighter text-[10px] truncate">{group.transactions.length} MẶT HÀNG</span>
                                     </div>
                                   ) : group.transactions.length > 1 ? (
                                     <div className="flex items-center gap-2">
                                       <Boxes size={14} className="text-gray-400 shrink-0" />
-                                      <span className="text-gray-400 italic font-bold text-xs">{group.transactions.length} sản phẩm</span>
+                                      <span className="text-gray-400 italic font-bold text-xs truncate">{group.transactions.length} sản phẩm</span>
                                     </div>
                                   ) : (
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-3 min-w-0">
                                       {(group.transactions[0].productImageUrl || product?.imageUrl) && (
                                         <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
                                           <img
@@ -5088,16 +5080,19 @@ export default function App() {
                                           />
                                         </div>
                                       )}
-                                      <div className="flex flex-col gap-0.5 min-w-0">
-                                        <span className="font-black text-white text-xs md:text-sm uppercase tracking-tight truncate max-w-[200px]" title={group.transactions[0].productName}>
+                                      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                        <span className="font-black text-white text-xs md:text-sm uppercase tracking-tight line-clamp-2" title={group.transactions[0].productName}>
                                           {group.transactions[0].productName}
                                         </span>
                                         <div className="flex items-center gap-1">
-                                          <span className="text-[10px] font-mono text-gray-500">{group.transactions[0].productSku || '---'}</span>
-                                          {group.transactions[0].productSku && (
+                                          <span className="text-[10px] font-mono text-gray-500">{displaySku}</span>
+                                          {(displaySku !== '---') && (
                                             <button
                                               type="button"
-                                              onClick={() => copyToClipboard(group.transactions[0].productSku || '')}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                copyToClipboard(displaySku);
+                                              }}
                                               className="p-0.5 text-gray-500 hover:text-neon-blue transition-colors rounded hover:bg-white/5"
                                               title="Sao chép mã SKU"
                                             >
@@ -5110,24 +5105,24 @@ export default function App() {
                                   )}
                                 </td>
 
-                                <td className="px-6 py-4 text-xs text-gray-400">
+                                <td className="px-2 py-4 text-xs text-gray-400 truncate" title={isSingle ? (product?.variant || '---') : '...'}>
                                   {isSingle ? (product?.variant || '---') : <span className="italic font-mono">...</span>}
                                 </td>
 
-                                <td className="px-6 py-4 text-center">
+                                <td className="px-2 py-4 text-center">
                                   <span className={cn(
-                                    "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                                    "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
                                     group.type === 'in' ? "bg-green-400/10 text-green-400 border border-green-400/20" : "bg-red-400/10 text-red-400 border border-red-400/20"
                                   )}>
                                     {group.type === 'in' ? 'Nhập' : 'Xuất'}
                                   </span>
                                 </td>
 
-                                <td className="px-6 py-4 text-right font-mono text-sm text-neon-blue">
+                                <td className="px-2 py-4 text-right font-mono text-sm text-neon-blue">
                                   {isSingle ? (((firstTrans.price || product?.price || 0)).toLocaleString('vi-VN') + 'đ') : '---'}
                                 </td>
 
-                                <td className="px-6 py-4 font-bold text-center">
+                                <td className="px-2 py-4 font-bold text-center">
                                   {group.type === 'in' ? '+' : '-'}{group.totalQuantity}
                                 </td>
 
@@ -5187,7 +5182,7 @@ export default function App() {
                                                   </div>
                                                   <div className="col-span-2 text-right">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">GIÁ</p>
-                                                    <p className="text-xs font-mono text-neon-blue">{(t.price || p?.price || 0).toLocaleString('vi-VN')}đ</p>
+                                                    <p className="text-xs font-mono text-neon-blue">{(t.price || p?.price || 0).toLocaleString()}?</p>
                                                   </div>
                                                   <div className="col-span-1 text-center">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">SL</p>
@@ -5197,7 +5192,7 @@ export default function App() {
                                                   </div>
                                                   <div className="col-span-2 text-right">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">THANH TOÁN</p>
-                                                    <p className="font-mono font-black text-white">{(t.quantity * (t.price || p?.price || 0)).toLocaleString('vi-VN')}đ</p>
+                                                    <p className="font-mono font-black text-white">{(t.quantity * (t.price || p?.price || 0)).toLocaleString()}?</p>
                                                   </div>
                                                 </div>
                                               );
@@ -5249,26 +5244,28 @@ export default function App() {
                                     </span>
                                   ) : group.batchId && (
                                     <span className="text-[9px] font-black text-neon-purple bg-neon-purple/10 px-1.5 py-0.5 rounded uppercase tracking-tighter">
-                                      LÔ HÀNG
+                                      LO HANG
                                     </span>
                                   )}
                                   <p className="text-[9px] text-gray-500 font-mono italic">{new Date(group.timestamp).toLocaleString('vi-VN')}</p>
                                 </div>
-                                <div className="flex gap-3 items-start mt-2">
-                                  {group.transactions.length === 1 && (group.transactions[0].productImageUrl || products.find(p => p.id === group.transactions[0].productId)?.imageUrl) && (
-                                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                                      <img
-                                        src={group.transactions[0].productImageUrl || products.find(p => p.id === group.transactions[0].productId)?.imageUrl}
-                                        alt={group.transactions[0].productName}
-                                        className="w-full h-full object-cover"
-                                        loading="lazy"
-                                      />
-                                    </div>
-                                  )}
-                                  {(() => {
-                                    const product = products.find(p => p.id === group.transactions[0].productId);
-                                    return (
-                                      <div className="flex flex-col gap-0.5 min-w-0">
+                                {(() => {
+                                  const product = products.find(p => p.id === group.transactions[0].productId || p.id === (group.transactions[0] as any).productId);
+                                  const displaySku = product?.sku || group.transactions[0].productSku || (group.transactions[0] as any).productSku || '---';
+                                  
+                                  return (
+                                    <div className="flex gap-3 items-start mt-2 min-w-0">
+                                      {group.transactions.length === 1 && (group.transactions[0].productImageUrl || product?.imageUrl) && (
+                                        <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                                          <img
+                                            src={group.transactions[0].productImageUrl || product?.imageUrl}
+                                            alt={group.transactions[0].productName}
+                                            className="w-full h-full object-cover"
+                                            loading="lazy"
+                                          />
+                                        </div>
+                                      )}
+                                      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                                         <h4 className="font-bold text-sm text-gray-200 uppercase truncate">
                                           {group.batchId ? group.batchName : (group.transactions.length > 1 ? `${group.transactions.length} sản phẩm` : group.transactions[0].productName)}
                                         </h4>
@@ -5278,11 +5275,14 @@ export default function App() {
                                               {product?.category || 'KHÁC'}
                                             </p>
                                             <div className="flex items-center gap-1 mt-0.5">
-                                              <span className="text-[10px] font-mono text-gray-500">{product?.sku || group.transactions[0].productSku || '---'}</span>
-                                              {(product?.sku || group.transactions[0].productSku) && (
+                                              <span className="text-[10px] font-mono text-gray-500">{displaySku}</span>
+                                              {(displaySku !== '---') && (
                                                 <button
                                                   type="button"
-                                                  onClick={() => copyToClipboard(product?.sku || group.transactions[0].productSku || '')}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    copyToClipboard(displaySku);
+                                                  }}
                                                   className="p-0.5 text-gray-500 hover:text-neon-blue transition-colors rounded hover:bg-white/5"
                                                   title="Sao chép mã SKU"
                                                 >
@@ -5293,9 +5293,9 @@ export default function App() {
                                           </>
                                         )}
                                       </div>
-                                    );
-                                  })()}
-                                </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
@@ -5827,7 +5827,7 @@ export default function App() {
                             <div className="space-y-1">
                               <h4 className="text-2xl font-black text-white">
                                 {kpi.label.includes('ĐƠN') ? kpi.value : kpi.value.toLocaleString('vi-VN')}
-                                {!kpi.label.includes('ĐƠN') && <span className="text-xs ml-1 text-gray-400 font-bold">đ</span>}
+                                {!kpi.label.includes('ĐƠN') && <span className="text-xs ml-1 text-gray-400 font-bold">?</span>}
                               </h4>
                               <div className="flex items-center gap-1.5">
                                 <div className={cn(
@@ -5897,7 +5897,7 @@ export default function App() {
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
                             itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                             labelStyle={{ color: '#00f2ff', marginBottom: '4px', fontWeight: '900' }}
-                            formatter={(value: any) => [value.toLocaleString('vi-VN') + 'đ', '']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', '']}
                           />
                           <Legend
                             verticalAlign="top"
@@ -5956,7 +5956,7 @@ export default function App() {
                           </Pie>
                           <Tooltip
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
-                            formatter={(value: any) => [value.toLocaleString('vi-VN') + 'đ', '']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', '']}
                           />
                         </PieChart>
                       </ResponsiveContainer>
@@ -6011,7 +6011,7 @@ export default function App() {
                             <p className="text-[10px] text-gray-500 font-mono tracking-widest mt-1">{p.sku}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-black text-white">{p.revenue.toLocaleString('vi-VN')}đ</p>
+                            <p className="text-sm font-black text-white">{p.revenue.toLocaleString('vi-VN')} ?</p>
                             <p className="text-[10px] text-neon-blue font-bold tracking-tighter mt-1">{p.quantity} l??t ban</p>
                           </div>
                         </div>
@@ -6043,7 +6043,7 @@ export default function App() {
                           />
                           <Tooltip
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
-                            formatter={(value: any) => [value.toLocaleString('vi-VN') + 'đ', 'Lợi Nhuận']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', 'Lợi Nhuận']}
                           />
                           <Bar
                             dataKey="profit"
@@ -6292,7 +6292,7 @@ export default function App() {
                                 {orderTransactionsState.reduce((sum, t) => {
                                   const price = products.find(p => p.id === t.productId)?.price || 0;
                                   return sum + (price * t.quantity);
-                                }, 0).toLocaleString('vi-VN')}đ
+                                }, 0).toLocaleString('vi-VN')}?
                               </span>
                             </div>
                           </div>
@@ -6386,7 +6386,7 @@ export default function App() {
                                     <div className="text-right">
                                       <p className="text-sm font-bold text-neon-blue">x{t.quantity}</p>
                                       <p className="text-xs text-gray-500">
-                                        {((products.find(p => p.id === t.productId)?.price || 0) * t.quantity).toLocaleString('vi-VN')}đ
+                                        {((products.find(p => p.id === t.productId)?.price || 0) * t.quantity).toLocaleString('vi-VN')}?
                                       </p>
                                     </div>
                                     <button
@@ -7423,7 +7423,7 @@ export default function App() {
                                               setPredefinedCategories(prev => prev.filter(c => c !== cat));
                                             }}
                                             className="p-3 text-red-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                                            title="Xóa mẫu"
+                                            title="Xoa m?u"
                                           >
                                             <Trash2 size={14} />
                                           </button>
@@ -7679,7 +7679,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="text-right shrink-0 ml-4">
-                          <p className="text-sm font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}đ</p>
+                          <p className="text-sm font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}?</p>
                           <p className={cn(
                             "text-[10px] font-bold",
                             product.quantity > 0 ? "text-green-400" : "text-red-400"
@@ -7853,7 +7853,7 @@ export default function App() {
                     }}
                     className="w-full py-4 rounded-2xl bg-neon-blue text-black font-black uppercase tracking-widest shadow-[0_0_30px_rgba(0,242,255,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all"
                   >
-                    Áp dụng thay đổi
+                    Ap d?ng thay ??i
                   </button>
                 </div>
               </motion.div>
