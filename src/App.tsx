@@ -3728,7 +3728,8 @@ export default function App() {
                                 </span>
                               </div>
                               <span className="text-lg md:text-2xl font-black text-neon-blue neon-text leading-none">
-                                {currentTotal.toLocaleString('vi-VN')}VND
+                                {currentTotal.toLocaleString('vi-VN')}
+                                <span className="text-[8px] text-gray-500 ml-1">VNĐ</span>
                               </span>
                             </div>
                           </div>
@@ -7387,7 +7388,7 @@ export default function App() {
                                               setPredefinedCategories(prev => prev.filter(c => c !== cat));
                                             }}
                                             className="p-3 text-red-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                                            title="Xoa m?u"
+                                            title="Xóa mẫu"
                                           >
                                             <Trash2 size={14} />
                                           </button>
@@ -7817,7 +7818,7 @@ export default function App() {
                     }}
                     className="w-full py-4 rounded-2xl bg-neon-blue text-black font-black uppercase tracking-widest shadow-[0_0_30px_rgba(0,242,255,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all"
                   >
-                    Ap d?ng thay ??i
+                    Áp dụng thay đổi
                   </button>
                 </div>
               </motion.div>
