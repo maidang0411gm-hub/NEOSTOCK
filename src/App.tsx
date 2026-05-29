@@ -3738,7 +3738,7 @@ export default function App() {
                               </div>
                               <span className="text-lg md:text-2xl font-black text-neon-blue neon-text leading-none">
                                 {currentTotal.toLocaleString('vi-VN')}
-                                <span className="text-[20px] text-green-400 ml-1">đ</span>
+                                <span className="text-[20px] text-neon-blue ml-1">đ</span>
                               </span>
                             </div>
                           </div>
