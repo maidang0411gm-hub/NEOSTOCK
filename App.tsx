@@ -3728,7 +3728,8 @@ export default function App() {
                                 </span>
                               </div>
                               <span className="text-lg md:text-2xl font-black text-neon-blue neon-text leading-none">
-                                {currentTotal.toLocaleString('vi-VN')}?
+                                {currentTotal.toLocaleString('vi-VN')}
+                                <span className="text-[8px] text-gray-500 ml-1">VNĐ</span>
                               </span>
                             </div>
                           </div>
