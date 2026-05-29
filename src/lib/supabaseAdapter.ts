@@ -82,7 +82,6 @@ const TRANSACTIONS_COLUMNS = new Set([
   'timestamp',
   'note',
   'order_number',
-  'order_source',
   'shipping_code',
   'price',
   'total_price',

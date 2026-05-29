@@ -1845,7 +1845,6 @@ export default function App() {
           timestamp: timestamp,
           userId: user.uid,
           orderNumber: finalOrderNum,
-          orderSource: salesSubTab,
           note: `Bán hàng ${salesSubTab === 'direct' ? 'Trực tiếp' : 'Online'}${salesSubTab === 'online' && shippingCode ? ' [MVĐ: ' + shippingCode + ']' : ''}${currentNote ? ' - ' + currentNote : ''}`
         };
 
@@ -5038,12 +5037,15 @@ export default function App() {
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 text-sm text-gray-400 font-mono">
-                                  {new Date(group.timestamp).toLocaleString('vi-VN')}
+                                <td className="px-6 py-4 text-xs text-gray-400 font-mono">
+                                  {(() => {
+                                    const d = new Date(group.timestamp);
+                                    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+                                  })()}
                                 </td>
                                 <td className="px-6 py-4">
                                   {group.paymentMethod ? (
-                                    <div className="flex items-center gap-1.5 min-w-[120px]">
+                                    <div className="flex items-center gap-1.5">
                                       <div className={cn(
                                         "p-1.5 rounded-lg",
                                         group.paymentMethod === 'cash' ? "bg-green-400/10 text-green-400" : "bg-neon-blue/10 text-neon-blue"
@@ -5054,7 +5056,7 @@ export default function App() {
                                         "text-[10px] font-black uppercase tracking-widest",
                                         group.paymentMethod === 'cash' ? "text-green-400" : "text-neon-blue"
                                       )}>
-                                        {group.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}
+                                        {group.paymentMethod === 'cash' ? 'Tiền mặt' : 'C.Khoản'}
                                       </span>
                                     </div>
                                   ) : <span className="text-gray-600 font-mono text-xs">---</span>}
@@ -5063,7 +5065,7 @@ export default function App() {
                                   {isSingle ? (product?.category || '---') : <span className="italic">Đa danh mục</span>}
                                 </td>
 
-                                <td className="px-6 py-4 text-left">
+                                <td className="px-6 py-4 text-left min-w-[320px] max-w-[450px]">
                                   {group.batchId ? (
                                     <div className="flex items-center gap-2">
                                       <Package size={14} className="text-neon-purple shrink-0" />
@@ -5263,31 +5265,36 @@ export default function App() {
                                       />
                                     </div>
                                   )}
-                                  <div className="flex flex-col gap-0.5 min-w-0">
-                                    <h4 className="font-bold text-sm text-gray-200 uppercase truncate">
-                                      {group.batchId ? group.batchName : (group.transactions.length > 1 ? `${group.transactions.length} sản phẩm` : group.transactions[0].productName)}
-                                    </h4>
-                                    {group.transactions.length === 1 && (
-                                      <>
-                                        <p className="text-[9px] text-gray-500 uppercase tracking-widest font-black">
-                                          {products.find(p => p.id === group.transactions[0].productId)?.category || 'KHÁC'}
-                                        </p>
-                                        <div className="flex items-center gap-1 mt-0.5">
-                                          <span className="text-[10px] font-mono text-gray-500">{group.transactions[0].productSku || '---'}</span>
-                                          {group.transactions[0].productSku && (
-                                            <button
-                                              type="button"
-                                              onClick={() => copyToClipboard(group.transactions[0].productSku || '')}
-                                              className="p-0.5 text-gray-500 hover:text-neon-blue transition-colors rounded hover:bg-white/5"
-                                              title="Sao chép mã SKU"
-                                            >
-                                              <Copy size={10} />
-                                            </button>
-                                          )}
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
+                                  {(() => {
+                                    const product = products.find(p => p.id === group.transactions[0].productId);
+                                    return (
+                                      <div className="flex flex-col gap-0.5 min-w-0">
+                                        <h4 className="font-bold text-sm text-gray-200 uppercase truncate">
+                                          {group.batchId ? group.batchName : (group.transactions.length > 1 ? `${group.transactions.length} sản phẩm` : group.transactions[0].productName)}
+                                        </h4>
+                                        {group.transactions.length === 1 && (
+                                          <>
+                                            <p className="text-[9px] text-gray-500 uppercase tracking-widest font-black">
+                                              {product?.category || 'KHÁC'}
+                                            </p>
+                                            <div className="flex items-center gap-1 mt-0.5">
+                                              <span className="text-[10px] font-mono text-gray-500">{product?.sku || group.transactions[0].productSku || '---'}</span>
+                                              {(product?.sku || group.transactions[0].productSku) && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => copyToClipboard(product?.sku || group.transactions[0].productSku || '')}
+                                                  className="p-0.5 text-gray-500 hover:text-neon-blue transition-colors rounded hover:bg-white/5"
+                                                  title="Sao chép mã SKU"
+                                                >
+                                                  <Copy size={10} />
+                                                </button>
+                                              )}
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </div>
