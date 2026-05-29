@@ -1783,7 +1783,14 @@ export default function App() {
   };
 
   const completeSale = async () => {
-    if (!user || cart.length === 0) return;
+    if (!user) {
+      alert("Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn. Vui lòng đăng nhập lại để thanh toán!");
+      return;
+    }
+    if (cart.length === 0) {
+      alert("Giỏ hàng của bạn đang trống!");
+      return;
+    }
 
     // Calculate daily order number in DDMMYYYYNNNN format
     const now = new Date();
@@ -1861,8 +1868,10 @@ export default function App() {
       setDirectPaymentMethod('cash');
       setDirectCashReceived(0);
       setIsDirectNoteOpen(false);
-      alert(`Đã hoàn thành đơn hàng! #${finalOrderNum}`);
-    } catch (error) {
+      alert(`Đã hoàn thành đơn hàng thành công! Mã đơn: #${finalOrderNum}`);
+    } catch (error: any) {
+      console.error('Lỗi chi tiết khi thanh toán:', error);
+      alert(`Thanh toán thất bại! Lỗi hệ thống: ${error.message || error}`);
       handleDataError(error, OperationType.WRITE, 'sales/complete');
     }
   };
