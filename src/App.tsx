@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, Component } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef, Component } from 'react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -308,6 +308,14 @@ export default function App() {
     return saved !== null ? saved === 'dark' : true;
   });
 
+  const [isLowStockExpanded, setIsLowStockExpanded] = useState(false);
+  const [isRecentActivityExpanded, setIsRecentActivityExpanded] = useState(false);
+  const [invListPage, setInvListPage] = useState(1);
+
+  useEffect(() => {
+    setInvListPage(1);
+  }, [inventoryListSubTab]);
+
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -490,7 +498,7 @@ export default function App() {
     const sorted = [...inventoryOnly].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     if (inventoryListSubTab === 'retail') {
-      return sorted.filter(t => !t.batchId).slice(0, 20); // Last 20 retail scans
+      return sorted.filter(t => !t.batchId); // Return all retail scans (we will paginate)
     } else {
       // Group by batch for the 'Nhập Xuất Lô' sub-tab
       const batches: any[] = [];
@@ -515,9 +523,16 @@ export default function App() {
           b.transactions.push(t);
         }
       });
-      return batches.slice(0, 10); // Last 10 batches
+      return batches; // Return all batches
     }
   }, [transactions, inventoryListSubTab]);
+
+  const itemsPerPage = 8;
+  const totalInvPages = Math.ceil(recentInventoryTransactions.length / itemsPerPage);
+  const displayedInvTransactions = useMemo(() => {
+    const start = (invListPage - 1) * itemsPerPage;
+    return recentInventoryTransactions.slice(start, start + itemsPerPage);
+  }, [recentInventoryTransactions, invListPage]);
 
   const [shippingCode, setShippingCode] = useState('');
   const [onlineSkuInput, setOnlineSkuInput] = useState('');
@@ -2558,7 +2573,7 @@ export default function App() {
                   {[
                     { label: 'Tổng sản phẩm', value: stats.totalItems, icon: Package, color: 'text-neon-blue', bg: 'bg-neon-blue/10' },
                     { label: 'Sắp hết hàng', value: stats.lowStockItems, icon: AlertTriangle, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
-                    { label: 'Giá trị tồn kho', value: stats.totalValue.toLocaleString('vi-VN') + '₫', icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-400/10' },
+                    { label: 'Giá trị tồn kho', value: stats.totalValue.toLocaleString('vi-VN') + ' VND', icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-400/10' },
                     { label: 'Giao dịch hôm nay', value: stats.recentTransCount, icon: History, color: 'text-neon-purple', bg: 'bg-neon-purple/10' },
                   ].map((stat, i) => (
                     <motion.div
@@ -2610,10 +2625,12 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                          {products
-                            .filter(p => !p.isHeader && p.quantity <= p.minStock)
-                            .sort((a, b) => (b.recommendedStock - b.quantity) - (a.recommendedStock - a.quantity))
-                            .map(product => (
+                          {(() => {
+                            const lowStockFiltered = products
+                              .filter(p => !p.isHeader && p.quantity <= p.minStock)
+                              .sort((a, b) => (b.recommendedStock - b.quantity) - (a.recommendedStock - a.quantity));
+                            const displayedLowStock = isLowStockExpanded ? lowStockFiltered : lowStockFiltered.slice(0, 5);
+                            return displayedLowStock.map(product => (
                               <tr key={product.id} className="hover:bg-white/5 transition-colors group">
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-3">
@@ -2655,7 +2672,7 @@ export default function App() {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3 font-mono text-xs">
-                                  {product.price.toLocaleString('vi-VN')}₫
+                                  {product.price.toLocaleString('vi-VN')} VND
                                 </td>
                                 <td className="px-4 py-3 text-right">
                                   <div className="flex items-center justify-end gap-1.5">
@@ -2682,7 +2699,8 @@ export default function App() {
                                   </div>
                                 </td>
                               </tr>
-                            ))}
+                            ));
+                          })()}
                         </tbody>
                       </table>
                       {products.filter(p => !p.isHeader && p.quantity <= p.minStock).length === 0 && (
@@ -2692,6 +2710,23 @@ export default function App() {
                         </div>
                       )}
                     </div>
+                    {(() => {
+                      const lowStockFiltered = products.filter(p => !p.isHeader && p.quantity <= p.minStock);
+                      return lowStockFiltered.length > 5 && (
+                        <div className="flex justify-center pt-4 border-t border-white/5">
+                          <button
+                            onClick={() => setIsLowStockExpanded(!isLowStockExpanded)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold transition-all text-neon-blue"
+                          >
+                            {isLowStockExpanded ? (
+                              <>Thu gọn <ChevronUp size={14} /></>
+                            ) : (
+                              <>Xem thêm ({lowStockFiltered.length - 5} sản phẩm) <ChevronDown size={14} /></>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Recent Activity */}
@@ -2701,7 +2736,7 @@ export default function App() {
                       Hoạt động gần đây
                     </h3>
                     <div className="space-y-6">
-                      {transactions.slice(0, 5).map((trans, idx) => (
+                      {(isRecentActivityExpanded ? transactions.slice(0, 15) : transactions.slice(0, 5)).map((trans, idx) => (
                         <div key={trans.id || `trans-${idx}`} className="flex gap-4 relative">
                           <div className={cn(
                             "w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 overflow-hidden",
@@ -2728,6 +2763,20 @@ export default function App() {
                       ))}
                       {transactions.length === 0 && (
                         <p className="text-center py-12 text-gray-500 text-sm">Chưa có giao dịch nào.</p>
+                      )}
+                      {transactions.length > 5 && (
+                        <div className="flex justify-center pt-2 border-t border-white/5">
+                          <button
+                            onClick={() => setIsRecentActivityExpanded(!isRecentActivityExpanded)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold transition-all text-neon-purple"
+                          >
+                            {isRecentActivityExpanded ? (
+                              <>Thu gọn <ChevronUp size={14} /></>
+                            ) : (
+                              <>Xem thêm ({Math.min(10, transactions.length - 5)} hoạt động) <ChevronDown size={14} /></>
+                            )}
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2930,7 +2979,7 @@ export default function App() {
                                   <span className="text-[10px] font-bold text-neon-blue">Tồn: {item.product.quantity}</span>
                                   <span className="text-[10px] font-bold text-neon-purple uppercase">{item.product.variant || 'Mặc định'}</span>
                                   <span className="text-[10px] font-bold text-gray-400 uppercase">{item.product.category || 'Khác'}</span>
-                                  <span className="text-[10px] font-mono text-green-300">{(item.product.price || 0).toLocaleString('vi-VN')}₫</span>
+                                  <span className="text-[10px] font-mono text-green-300">{(item.product.price || 0).toLocaleString('vi-VN')} VND</span>
                                 </div>
                               </div>
                             </div>
@@ -3131,7 +3180,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {recentInventoryTransactions.map((item, idx) => (
+                        {displayedInvTransactions.map((item, idx) => (
                           <tr key={`inv-${inventoryListSubTab}-${item.id || idx}`} className="hover:bg-white/5 transition-colors group">
                             <td className="px-6 py-4 text-xs font-mono text-gray-400">
                               {new Date(item.timestamp).toLocaleString('vi-VN')}
@@ -3191,7 +3240,7 @@ export default function App() {
                                           <p className="font-bold text-gray-200 truncate max-w-[140px]">{transaction.productName}</p>
                                           <span className="px-1.5 py-0.5 rounded bg-white/5 uppercase text-gray-400">{category}</span>
                                           <span className="px-1.5 py-0.5 rounded bg-neon-purple/10 uppercase text-neon-purple">{variant}</span>
-                                          <span className="font-mono text-neon-blue">{unitPrice.toLocaleString('vi-VN')}₫</span>
+                                          <span className="font-mono text-neon-blue">{unitPrice.toLocaleString('vi-VN')} VND</span>
                                         </div>
                                       );
                                     })}
@@ -3224,7 +3273,7 @@ export default function App() {
                             {inventoryListSubTab === 'retail' && (
                               <td className="px-6 py-4">
                                 <span className="text-xs font-mono text-neon-blue">
-                                  {(item.price || products.find(p => p.id === item.productId)?.price || 0).toLocaleString('vi-VN')}₫
+                                  {(item.price || products.find(p => p.id === item.productId)?.price || 0).toLocaleString('vi-VN')} VND
                                 </span>
                               </td>
                             )}
@@ -3278,6 +3327,54 @@ export default function App() {
                       </tbody>
                     </table>
                   </div>
+                  {/* Pagination */}
+                  {totalInvPages > 1 && (
+                    <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                      <p className="text-xs text-gray-500">
+                        Trang <span className="font-bold text-white">{invListPage}</span> / {totalInvPages}
+                        <span className="ml-2 text-gray-600">({recentInventoryTransactions.length} bản ghi)</span>
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setInvListPage(p => Math.max(1, p - 1))}
+                          disabled={invListPage === 1}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <ChevronLeft size={14} /> Trước
+                        </button>
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: Math.min(5, totalInvPages) }, (_, i) => {
+                            let page = i + 1;
+                            if (totalInvPages > 5) {
+                              if (invListPage > 3) page = invListPage - 2 + i;
+                              if (page > totalInvPages) page = totalInvPages - (4 - i);
+                            }
+                            return (
+                              <button
+                                key={page}
+                                onClick={() => setInvListPage(page)}
+                                className={cn(
+                                  "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                                  invListPage === page
+                                    ? "bg-neon-blue text-black shadow-[0_0_10px_rgba(0,242,255,0.3)]"
+                                    : "bg-white/5 hover:bg-white/10 text-gray-400"
+                                )}
+                              >
+                                {page}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button
+                          onClick={() => setInvListPage(p => Math.min(totalInvPages, p + 1))}
+                          disabled={invListPage === totalInvPages}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          Sau <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
 
@@ -5004,7 +5101,7 @@ export default function App() {
                                 </td>
 
                                 <td className="px-6 py-4 text-right font-mono text-sm text-neon-blue">
-                                  {isSingle ? (((firstTrans.price || product?.price || 0)).toLocaleString('vi-VN') + '₫') : '---'}
+                                  {isSingle ? (((firstTrans.price || product?.price || 0)).toLocaleString('vi-VN') + ' VND') : '---'}
                                 </td>
 
                                 <td className="px-6 py-4 font-bold text-center">
@@ -6473,7 +6570,7 @@ export default function App() {
                                 {products.find(p => p.id === t.productId)?.variant || 'Mặc định'}
                               </span>
                               <span className="text-[9px] font-mono text-neon-blue">
-                                {(t.price || products.find(p => p.id === t.productId)?.price || 0).toLocaleString('vi-VN')}₫
+                                {(t.price || products.find(p => p.id === t.productId)?.price || 0).toLocaleString('vi-VN')} VND
                               </span>
                             </div>
                           </div>
@@ -6597,7 +6694,7 @@ export default function App() {
                                 {products.find(p => p.id === t.productId)?.variant || 'Mặc định'}
                               </span>
                               <span className="text-[10px] font-mono text-neon-blue">
-                                {(t.price || products.find(p => p.id === t.productId)?.price || 0).toLocaleString('vi-VN')}₫
+                                {(t.price || products.find(p => p.id === t.productId)?.price || 0).toLocaleString('vi-VN')} VND
                               </span>
                             </div>
                           </div>
@@ -6739,7 +6836,7 @@ export default function App() {
                                 {products.find(p => p.id === t.productId)?.variant || 'Mặc định'}
                               </span>
                               <span className="text-[9px] font-mono text-neon-blue">
-                                {(t.price || products.find(p => p.id === t.productId)?.price || 0).toLocaleString('vi-VN')}₫
+                                {(t.price || products.find(p => p.id === t.productId)?.price || 0).toLocaleString('vi-VN')} VND
                               </span>
                             </div>
                           </div>
@@ -6863,7 +6960,7 @@ export default function App() {
                                 {products.find(p => p.id === t.productId)?.variant || 'Mặc định'}
                               </span>
                               <span className="text-[10px] font-mono text-neon-blue">
-                                {(t.price || products.find(p => p.id === t.productId)?.price || 0).toLocaleString('vi-VN')}₫
+                                {(t.price || products.find(p => p.id === t.productId)?.price || 0).toLocaleString('vi-VN')} VND
                               </span>
                             </div>
                           </div>
