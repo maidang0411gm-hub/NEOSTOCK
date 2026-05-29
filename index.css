@@ -1,0 +1,122 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-neon-blue: #00f2ff;
+  --color-neon-purple: #bc13fe;
+  --color-neon-pink: #ff00ff;
+}
+
+:root {
+  --app-bg: #f5f7f9;
+  --app-text: #1e293b;
+  --app-card: #ffffff;
+  --app-border: rgba(0, 0, 0, 0.06);
+  --app-muted: #64748b;
+  --neon-blue-theme: #0ea5e9; 
+  --neon-purple-theme: #8b5cf6;
+  --neon-glow: rgba(14, 165, 233, 0.15);
+  --btn-hover: #f1f5f9;
+  --scroll-thumb: #cbd5e1;
+}
+
+.dark {
+  --app-bg: #050505;
+  --app-text: #f1f5f9;
+  --app-card: rgba(15, 15, 20, 0.82);
+  --app-border: rgba(255, 255, 255, 0.08);
+  --app-muted: #94a3b8;
+  --neon-blue-theme: #00f2ff;
+  --neon-purple-theme: #bc13fe;
+  --neon-glow: rgba(0, 242, 255, 0.4);
+  --btn-hover: rgba(255, 255, 255, 0.05);
+  --scroll-thumb: rgba(255, 255, 255, 0.1);
+}
+
+@theme {
+  --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-neon-blue: var(--neon-blue-theme);
+  --color-neon-purple: var(--neon-purple-theme);
+  --color-neon-pink: #ff00ff;
+}
+
+@layer base {
+  body {
+    @apply transition-colors duration-300;
+    background-color: var(--app-bg);
+    color: var(--app-text);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    background-image: 
+      radial-gradient(circle at 50% 0%, var(--neon-glow) 0%, transparent 50%);
+  }
+}
+
+/* Global Overrides for Theme Consistency */
+.glass {
+  background-color: var(--app-card) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--app-border) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+}
+
+.dark .glass {
+  box-shadow: none;
+}
+
+.bg-white\/5, .bg-white\/10 {
+  background-color: var(--btn-hover) !important;
+}
+
+/* Override hardcoded text colors in Light Mode selectively */
+:root:not(.dark) h1, 
+:root:not(.dark) h2, 
+:root:not(.dark) h3, 
+:root:not(.dark) h4,
+:root:not(.dark) p, 
+:root:not(.dark) span:not(.text-green-400):not(.text-red-400):not(.text-neon-blue) {
+  color: var(--app-text);
+}
+
+:root:not(.dark) .text-gray-200,
+:root:not(.dark) .text-gray-300,
+:root:not(.dark) .text-gray-400, 
+:root:not(.dark) .text-gray-500 {
+  color: var(--app-muted) !important;
+}
+
+:root:not(.dark) .text-gray-300.font-bold,
+:root:not(.dark) .text-gray-400.font-bold {
+  color: var(--app-text) !important;
+}
+
+.neon-text {
+  color: var(--neon-blue-theme) !important;
+  text-shadow: 0 0 10px var(--neon-glow);
+}
+
+.neon-border {
+  border: 1px solid var(--neon-blue-theme) !important;
+  box-shadow: 0 0 15px var(--neon-glow);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--scroll-thumb);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--app-muted);
+}
+
