@@ -96,7 +96,6 @@ import { BarcodeScanner } from './components/BarcodeScanner';
 import { FloatingKeyboard } from './components/FloatingKeyboard';
 import { Product, Transaction } from './types';
 import { cn } from './lib/utils';
-import { fixVietnameseText, repairVietnameseUi } from './lib/fixVietnamese';
 
 // Error handling for remote data operations
 enum OperationType {
@@ -148,10 +147,6 @@ function handleDataError(error: unknown, operationType: OperationType, path: str
   }
   console.error('Remote data error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
-}
-
-function formatCurrency(amount: number) {
-  return `${Number(amount || 0).toLocaleString('vi-VN')}₫`;
 }
 
 // Auth Component
@@ -281,6 +276,17 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const productsRef = useRef<Product[]>([]);
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
+  const applyProductsOptimistically = (updater: (prev: Product[]) => Product[]) => {
+    setProducts(prev => {
+      const next = updater(prev);
+      productsRef.current = next;
+      return next;
+    });
+  };
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'transactions' | 'history' | 'settings' | 'sales' | 'analytics'>('dashboard');
@@ -311,34 +317,7 @@ export default function App() {
     localStorage.setItem('neostock_theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  useEffect(() => {
-    const applyRepair = () => repairVietnameseUi();
-    applyRepair();
 
-    const observer = new MutationObserver(() => {
-      applyRepair();
-    });
-
-    observer.observe(document.body, {
-      subtree: true,
-      childList: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ['title', 'placeholder', 'aria-label'],
-    });
-
-    const originalAlert = window.alert.bind(window);
-    const originalConfirm = window.confirm.bind(window);
-
-    window.alert = ((message?: string) => originalAlert(typeof message === 'string' ? fixVietnameseText(message) : message)) as typeof window.alert;
-    window.confirm = ((message?: string) => originalConfirm(typeof message === 'string' ? fixVietnameseText(message) : message)) as typeof window.confirm;
-
-    return () => {
-      observer.disconnect();
-      window.alert = originalAlert;
-      window.confirm = originalConfirm;
-    };
-  }, []);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -1100,7 +1079,9 @@ export default function App() {
     const productsQuery = query(collection(db, 'products'), where('userId', '==', user.uid));
     const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
       const productsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
-      setProducts(productsData.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
+      const sortedData = productsData.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      productsRef.current = sortedData;
+      setProducts(sortedData);
     }, (error) => handleDataError(error, OperationType.LIST, 'products'));
 
     const transactionsQuery = query(collection(db, 'transactions'), where('userId', '==', user.uid));
@@ -1201,54 +1182,44 @@ export default function App() {
         editingBatch.transactions.map((transaction: Transaction) => [transaction.id, transaction]),
       );
       const editedIds = new Set(editBatchTransactions.map(transaction => transaction.id));
-      const inventoryAdjustments = new Map<string, number>();
 
-      editingBatch.transactions.forEach((transaction: Transaction) => {
-        if (!transaction.productId) return;
-        const revertDelta = transaction.type === 'in' ? -transaction.quantity : transaction.quantity;
-        inventoryAdjustments.set(
-          transaction.productId,
-          (inventoryAdjustments.get(transaction.productId) || 0) + revertDelta,
-        );
-      });
+      for (const originalTransaction of editingBatch.transactions as Transaction[]) {
+        if (editedIds.has(originalTransaction.id)) continue;
 
-      editBatchTransactions.forEach((transaction: Transaction) => {
-        if (!transaction.productId) return;
-        const applyDelta = transaction.type === 'in' ? transaction.quantity : -transaction.quantity;
-        inventoryAdjustments.set(
-          transaction.productId,
-          (inventoryAdjustments.get(transaction.productId) || 0) + applyDelta,
-        );
-      });
-
-      await Promise.all(
-        Array.from(inventoryAdjustments.entries()).map(async ([productId, delta]) => {
-          if (delta === 0) return;
-          const product = products.find(item => item.id === productId);
-          if (!product) return;
-          await updateDoc(doc(db, 'products', productId), {
-            quantity: product.quantity + delta,
+        const product = products.find(item => item.id === originalTransaction.productId);
+        if (product) {
+          const restoreDelta = originalTransaction.type === 'in' ? -originalTransaction.quantity : originalTransaction.quantity;
+          await updateDoc(doc(db, 'products', originalTransaction.productId), {
+            quantity: product.quantity + restoreDelta,
             lastUpdated: now,
           });
-        }),
-      );
+        }
 
-      await Promise.all(
-        editingBatch.transactions
-          .filter((transaction: Transaction) => !editedIds.has(transaction.id))
-          .map((transaction: Transaction) => deleteDoc(doc(db, 'transactions', transaction.id))),
-      );
+        await deleteDoc(doc(db, 'transactions', originalTransaction.id));
+      }
 
-      await Promise.all(
-        editBatchTransactions.map((transaction) =>
-          updateDoc(doc(db, 'transactions', transaction.id), {
-            batchName: editBatchName,
-            note: editBatchNote,
-            quantity: transaction.quantity,
-            totalPrice: (transaction.price || 0) * transaction.quantity,
-          }),
-        ),
-      );
+      for (const transaction of editBatchTransactions) {
+        const originalTransaction = originalById.get(transaction.id);
+        const quantityDiff = transaction.quantity - (originalTransaction?.quantity ?? 0);
+
+        if (quantityDiff !== 0) {
+          const product = products.find(item => item.id === transaction.productId);
+          if (product) {
+            const stockAdjustment = transaction.type === 'in' ? quantityDiff : -quantityDiff;
+            await updateDoc(doc(db, 'products', transaction.productId), {
+              quantity: product.quantity + stockAdjustment,
+              lastUpdated: now,
+            });
+          }
+        }
+
+        await updateDoc(doc(db, 'transactions', transaction.id), {
+          batchName: editBatchName,
+          note: editBatchNote,
+          quantity: transaction.quantity,
+          totalPrice: (transaction.price || 0) * transaction.quantity,
+        });
+      }
 
       setIsBatchEditModalOpen(false);
       setEditingBatch(null);
@@ -1271,33 +1242,19 @@ export default function App() {
     setIsSaving(true);
     try {
       const now = new Date().toISOString();
-      const inventoryAdjustments = new Map<string, number>();
 
-      editingBatch.transactions.forEach((transaction: Transaction) => {
-        if (!transaction.productId) return;
-        const restoreDelta = transaction.type === 'in' ? -transaction.quantity : transaction.quantity;
-        inventoryAdjustments.set(
-          transaction.productId,
-          (inventoryAdjustments.get(transaction.productId) || 0) + restoreDelta,
-        );
-      });
-
-      await Promise.all(
-        Array.from(inventoryAdjustments.entries()).map(async ([productId, delta]) => {
-          const product = products.find(item => item.id === productId);
-          if (!product) return;
-          await updateDoc(doc(db, 'products', productId), {
-            quantity: product.quantity + delta,
+      for (const transaction of editingBatch.transactions as Transaction[]) {
+        const product = products.find(item => item.id === transaction.productId);
+        if (product) {
+          const restoreDelta = transaction.type === 'in' ? -transaction.quantity : transaction.quantity;
+          await updateDoc(doc(db, 'products', transaction.productId), {
+            quantity: product.quantity + restoreDelta,
             lastUpdated: now,
           });
-        }),
-      );
+        }
 
-      await Promise.all(
-        editingBatch.transactions.map((transaction: Transaction) =>
-          deleteDoc(doc(db, 'transactions', transaction.id)),
-        ),
-      );
+        await deleteDoc(doc(db, 'transactions', transaction.id));
+      }
 
       setIsBatchEditModalOpen(false);
       setEditingBatch(null);
@@ -1411,53 +1368,6 @@ export default function App() {
     setOrderTransactionsState(prev => prev.filter(t => t.id !== id));
   };
 
-  const handleDeleteCurrentOrder = async () => {
-    if (!editingTransaction || !user) return;
-
-    const transactionsToDelete = originalOrderTransactions.length > 0 ? originalOrderTransactions : [editingTransaction];
-    if (transactionsToDelete.length === 0) return;
-    if (!window.confirm('Bạn có chắc chắn muốn xóa TOÀN BỘ đơn hàng này?')) return;
-
-    setIsSaving(true);
-    try {
-      const now = new Date().toISOString();
-      const inventoryAdjustments = new Map<string, number>();
-
-      transactionsToDelete.forEach((transaction) => {
-        if (!transaction.productId) return;
-        const restoreDelta = transaction.type === 'in' ? -transaction.quantity : transaction.quantity;
-        inventoryAdjustments.set(
-          transaction.productId,
-          (inventoryAdjustments.get(transaction.productId) || 0) + restoreDelta,
-        );
-      });
-
-      await Promise.all(
-        Array.from(inventoryAdjustments.entries()).map(async ([productId, delta]) => {
-          const product = products.find(item => item.id === productId);
-          if (!product) return;
-          await updateDoc(doc(db, 'products', productId), {
-            quantity: product.quantity + delta,
-            lastUpdated: now,
-          });
-        }),
-      );
-
-      await Promise.all(
-        transactionsToDelete.map((transaction) => deleteDoc(doc(db, 'transactions', transaction.id))),
-      );
-
-      setEditingTransaction(null);
-      setOrderTransactionsState([]);
-      setOriginalOrderTransactions([]);
-      alert('Đã xóa đơn hàng thành công!');
-    } catch (error) {
-      handleDataError(error, OperationType.DELETE, 'transactions/order');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleAddProductToOrder = () => {
     if (!user || !editingTransaction || !addProductSku) return;
 
@@ -1535,7 +1445,7 @@ export default function App() {
 
   const handleScan = async (sku: string) => {
     setLastScanTime(Date.now());
-    const product = products.find(p => p.sku === sku);
+    const product = productsRef.current.find(p => p.sku === sku);
 
     if (isBatchMode) {
       if (product) {
@@ -1557,10 +1467,18 @@ export default function App() {
           return;
         }
 
+        const nextQty = type === 'in' ? product.quantity + quickQuantity : product.quantity - quickQuantity;
+
+        // Cập nhật tồn kho cục bộ ngay lập tức (optimistic update) để giao diện hiển thị đúng
+        // và lượt quét tiếp theo có dữ liệu chính xác
+        applyProductsOptimistically(prev =>
+          prev.map(p => p.id === product.id ? { ...p, quantity: nextQty, lastUpdated: new Date().toISOString() } : p)
+        );
+
         try {
           const productRef = doc(db, 'products', product.id);
           await updateDoc(productRef, {
-            quantity: type === 'in' ? product.quantity + quickQuantity : product.quantity - quickQuantity,
+            quantity: nextQty,
             lastUpdated: new Date().toISOString()
           });
 
@@ -1698,10 +1616,10 @@ export default function App() {
 
   const handleDeleteProduct = async (id: string) => {
     if (!user) return;
+    setDeletingProduct(null);
+    setContextMenu(null);
     try {
       await deleteDoc(doc(db, 'products', id));
-      setDeletingProduct(null);
-      setContextMenu(null);
     } catch (error) {
       handleDataError(error, OperationType.DELETE, `products/${id}`);
     }
@@ -1918,14 +1836,6 @@ export default function App() {
         }
 
         await addDoc(collection(db, 'transactions'), transactionData);
-
-        if (supabase) {
-          await supabase.from('transactions').insert(transactionData);
-          await supabase.from('products').update({
-            quantity: newQuantity,
-            lastUpdated: timestamp
-          }).eq('id', item.product.id);
-        }
       }
 
       setCart([]);
@@ -1936,7 +1846,7 @@ export default function App() {
       setDirectPaymentMethod('cash');
       setDirectCashReceived(0);
       setIsDirectNoteOpen(false);
-      alert(`?a hoan thanh ??n hang! #${finalOrderNum}`);
+      alert(`Đã hoàn thành đơn hàng! #${finalOrderNum}`);
     } catch (error) {
       handleDataError(error, OperationType.WRITE, 'sales/complete');
     }
@@ -2559,7 +2469,7 @@ export default function App() {
               <button
                 onClick={() => setIsMobileMenuOpen(true)}
                 className="p-2 bg-white/5 rounded-xl text-gray-400 md:hidden hover:bg-white/10 active:scale-95 transition-all outline-none"
-                title="M? Menu"
+                title="Mở Menu"
               >
                 <div className="w-5 h-5 flex flex-col justify-center gap-1">
                   <span className="w-5 h-0.5 bg-current rounded-full" />
@@ -2946,7 +2856,7 @@ export default function App() {
                       )}
                     >
                       <Check size={20} />
-                      ?a {lastScannedProduct.type === 'in' ? 'nh?p' : 'xu?t'} {lastScannedProduct.quantity}: {lastScannedProduct.name}
+                      Đã {lastScannedProduct.type === 'in' ? 'nhập' : 'xuất'} {lastScannedProduct.quantity}: {lastScannedProduct.name}
                       {lastScannedProduct.variant && (
                         <span className="ml-2 px-1.5 py-0.5 rounded bg-white/20 text-[10px] uppercase">{lastScannedProduct.variant}</span>
                       )}
@@ -3475,7 +3385,7 @@ export default function App() {
                                 <div className="p-2 flex flex-col flex-1 gap-1">
                                   <h4 className="font-bold text-[10px] md:text-xs line-clamp-2 uppercase tracking-tight leading-tight">{product.name}</h4>
                                   <div className="flex items-center justify-between mt-auto pt-1">
-                                    <span className="text-[10px] md:text-xs font-black text-neon-blue">{formatCurrency(product.price)}</span>
+                                    <span className="text-[10px] md:text-xs font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}?</span>
                                     {product.variant && (
                                       <span className="text-[7px] px-1.5 py-0.5 rounded bg-neon-purple/10 text-neon-purple font-bold border border-neon-purple/20 truncate max-w-[50px]">
                                         {product.variant}
@@ -3633,9 +3543,9 @@ export default function App() {
                                               {item.product.variant}
                                             </span>
                                           )}
-                                          <span className="text-white/40 font-bold">{formatCurrency(item.product.price)}</span>
+                                          <span className="text-white/40 font-bold">{item.product.price.toLocaleString('vi-VN')}?</span>
                                           {item.unitPrice !== item.product.price && (
-                                            <span className="text-neon-blue font-black bg-neon-blue/10 px-1 rounded">Giá mới: {formatCurrency(item.unitPrice)}</span>
+                                            <span className="text-neon-blue font-black bg-neon-blue/10 px-1 rounded">Giá mới: {item.unitPrice.toLocaleString('vi-VN')}?</span>
                                           )}
                                         </div>
                                       </div>
@@ -3660,11 +3570,11 @@ export default function App() {
 
                                       <div className="flex flex-col items-end min-w-[80px] md:min-w-[100px]">
                                         <span className="font-black text-xs md:text-lg text-neon-blue neon-text leading-none">
-                                          {formatCurrency(itemTotal)}
+                                          {itemTotal.toLocaleString('vi-VN')}?
                                         </span>
                                         <div className="flex flex-col items-end mt-0.5">
-                                          {discountAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-red-500 uppercase tracking-tighter">-{formatCurrency(discountAmount)}</span>}
-                                          {surchargeAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-green-500 uppercase tracking-tighter">+{formatCurrency(surchargeAmount)}</span>}
+                                          {discountAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-red-500 uppercase tracking-tighter">-{discountAmount.toLocaleString('vi-VN')}?</span>}
+                                          {surchargeAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-green-500 uppercase tracking-tighter">+{surchargeAmount.toLocaleString('vi-VN')}?</span>}
                                         </div>
                                       </div>
 
@@ -3721,7 +3631,7 @@ export default function App() {
                                 </span>
                               </div>
                               <span className="text-lg md:text-2xl font-black text-neon-blue neon-text leading-none">
-                                {formatCurrency(currentTotal)}
+                                {currentTotal.toLocaleString('vi-VN')}?
                               </span>
                             </div>
                           </div>
@@ -3751,7 +3661,7 @@ export default function App() {
                                         onClick={() => setDirectCashReceived(currentTotal)}
                                         className="col-span-3 py-1.5 rounded-lg bg-neon-blue/10 border border-neon-blue/30 text-neon-blue text-[9px] font-bold hover:bg-neon-blue/20 transition-all active:scale-95 uppercase tracking-widest"
                                       >
-                                        Khach ??a ??: {formatCurrency(currentTotal)}
+                                        Khách Trả Đúng Bằng: {currentTotal.toLocaleString('vi-VN')}VNĐ
                                       </button>
                                     </div>
 
@@ -3760,7 +3670,7 @@ export default function App() {
                                       <div className="space-y-1.5">
                                         <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                                           <Banknote size={10} className="text-green-400" />
-                                          Khach tr?
+                                          Khách Trả
                                         </label>
                                         <div className="relative">
                                           <input
@@ -3776,14 +3686,14 @@ export default function App() {
                                       <div className="space-y-1.5">
                                         <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                                           <ArrowDownLeft size={10} className="text-neon-purple" />
-                                          Trả lại
+                                          Trả Lại
                                         </label>
                                         <div className="w-full glass px-3 py-2 rounded-xl border border-white/5 flex items-center justify-between">
                                           <span className={cn(
                                             "text-xs font-black",
                                             (directCashReceived as number) >= currentTotal ? "text-neon-purple" : "text-gray-500"
                                           )}>
-                                            {formatCurrency(Math.max(0, (directCashReceived as number) - currentTotal))}
+                                            {Math.max(0, (directCashReceived as number) - currentTotal).toLocaleString('vi-VN')}
                                           </span>
                                           <span className="text-[8px] font-bold text-gray-500">VND</span>
                                         </div>
@@ -3795,7 +3705,7 @@ export default function App() {
                                 <div className="space-y-2">
                                   <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                                     <CreditCard size={10} className="text-neon-blue" />
-                                    Hình thức thanh toán
+                                    Hình Thức Thanh Toán
                                   </label>
                                   <div className="flex gap-2 p-1 glass rounded-xl border-white/5">
                                     {[
@@ -4016,7 +3926,7 @@ export default function App() {
                                             {item.product.variant}
                                           </span>
                                         )}
-                                        <span className="text-[10px] text-neon-blue font-bold">{formatCurrency(finalPrice)}</span>
+                                        <span className="text-[10px] text-neon-blue font-bold">{finalPrice.toLocaleString('vi-VN')}?</span>
                                       </div>
                                     </div>
                                   </div>
@@ -4055,12 +3965,12 @@ export default function App() {
                               <div className="glass p-4 rounded-2xl border-white/5 bg-gradient-to-br from-neon-blue/5 to-transparent">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="text-xs text-gray-400">Tạm tính:</span>
-                                  <span className="text-sm font-medium">{formatCurrency(currentTotal)}</span>
+                                  <span className="text-sm font-medium">{currentTotal.toLocaleString('vi-VN')}?</span>
                                 </div>
                                 <div className="flex items-center justify-between pt-2 border-t border-white/10">
                                   <span className="text-sm font-bold">Tổng thanh toán:</span>
                                   <span className="text-2xl font-black text-neon-blue">
-                                    {formatCurrency(currentTotal)}
+                                    {currentTotal.toLocaleString('vi-VN')}?
                                   </span>
                                 </div>
                               </div>
@@ -4547,7 +4457,7 @@ export default function App() {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 font-mono text-sm">
-                                  {formatCurrency(product.price)}
+                                  {product.price.toLocaleString('vi-VN')}?
                                 </td>
                                 <td className="px-6 py-4 text-xs text-gray-500">
                                   {new Date(product.lastUpdated).toLocaleDateString('vi-VN')}
@@ -5157,7 +5067,7 @@ export default function App() {
                                                   </div>
                                                   <div className="col-span-2 text-right">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">GIÁ</p>
-                                                    <p className="text-xs font-mono text-neon-blue">{formatCurrency(t.price || p?.price || 0)}</p>
+                                                    <p className="text-xs font-mono text-neon-blue">{(t.price || p?.price || 0).toLocaleString()}?</p>
                                                   </div>
                                                   <div className="col-span-1 text-center">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">SL</p>
@@ -5167,7 +5077,7 @@ export default function App() {
                                                   </div>
                                                   <div className="col-span-2 text-right">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">THANH TOÁN</p>
-                                                    <p className="font-mono font-black text-white">{formatCurrency(t.quantity * (t.price || p?.price || 0))}</p>
+                                                    <p className="font-mono font-black text-white">{(t.quantity * (t.price || p?.price || 0)).toLocaleString()}?</p>
                                                   </div>
                                                 </div>
                                               );
@@ -5783,7 +5693,8 @@ export default function App() {
                             <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">{kpi.label}</p>
                             <div className="space-y-1">
                               <h4 className="text-2xl font-black text-white">
-                                {kpi.label.includes('ĐƠN') ? kpi.value : formatCurrency(kpi.value)}
+                                {kpi.label.includes('ĐƠN') ? kpi.value : kpi.value.toLocaleString('vi-VN')}
+                                {!kpi.label.includes('ĐƠN') && <span className="text-xs ml-1 text-gray-400 font-bold">?</span>}
                               </h4>
                               <div className="flex items-center gap-1.5">
                                 <div className={cn(
@@ -5853,7 +5764,7 @@ export default function App() {
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
                             itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                             labelStyle={{ color: '#00f2ff', marginBottom: '4px', fontWeight: '900' }}
-                            formatter={(value: any) => [formatCurrency(Number(value)), '']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', '']}
                           />
                           <Legend
                             verticalAlign="top"
@@ -5912,7 +5823,7 @@ export default function App() {
                           </Pie>
                           <Tooltip
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
-                            formatter={(value: any) => [formatCurrency(Number(value)), '']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', '']}
                           />
                         </PieChart>
                       </ResponsiveContainer>
@@ -5967,7 +5878,7 @@ export default function App() {
                             <p className="text-[10px] text-gray-500 font-mono tracking-widest mt-1">{p.sku}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-black text-white">{formatCurrency(p.revenue)}</p>
+                            <p className="text-sm font-black text-white">{p.revenue.toLocaleString('vi-VN')} ?</p>
                             <p className="text-[10px] text-neon-blue font-bold tracking-tighter mt-1">{p.quantity} l??t ban</p>
                           </div>
                         </div>
@@ -5999,7 +5910,7 @@ export default function App() {
                           />
                           <Tooltip
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
-                            formatter={(value: any) => [formatCurrency(Number(value)), 'Lợi Nhuận']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', 'Lợi Nhuận']}
                           />
                           <Bar
                             dataKey="profit"
@@ -6031,8 +5942,8 @@ export default function App() {
                         <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Giá trị đơn Trung bình</p>
                         <h4 className="text-2xl font-black text-neon-purple">
                           {analyticsData.current.directOrderCount + analyticsData.current.onlineOrderCount > 0
-                            ? formatCurrency(Math.round(analyticsData.current.revenue / (analyticsData.current.directOrderCount + analyticsData.current.onlineOrderCount)))
-                            : formatCurrency(0)}
+                            ? Math.round(analyticsData.current.revenue / (analyticsData.current.directOrderCount + analyticsData.current.onlineOrderCount)).toLocaleString('vi-VN')
+                            : '0'} ?
                         </h4>
                         <p className="text-[10px] text-gray-500 italic">Dựa trên {analyticsData.current.directOrderCount + analyticsData.current.onlineOrderCount} đơn hàng</p>
                       </div>
@@ -6245,10 +6156,10 @@ export default function App() {
                             <div className="pt-3 border-t border-white/5 flex justify-between items-end">
                               <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Tổng thanh toán:</span>
                               <span className="text-2xl font-black text-neon-blue">
-                                {formatCurrency(orderTransactionsState.reduce((sum, t) => {
+                                {orderTransactionsState.reduce((sum, t) => {
                                   const price = products.find(p => p.id === t.productId)?.price || 0;
                                   return sum + (price * t.quantity);
-                                }, 0))}
+                                }, 0).toLocaleString('vi-VN')}?
                               </span>
                             </div>
                           </div>
@@ -6342,7 +6253,7 @@ export default function App() {
                                     <div className="text-right">
                                       <p className="text-sm font-bold text-neon-blue">x{t.quantity}</p>
                                       <p className="text-xs text-gray-500">
-                                        {formatCurrency((products.find(p => p.id === t.productId)?.price || 0) * t.quantity)}
+                                        {((products.find(p => p.id === t.productId)?.price || 0) * t.quantity).toLocaleString('vi-VN')}?
                                       </p>
                                     </div>
                                     <button
@@ -6435,7 +6346,19 @@ export default function App() {
                   <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-white/10 shrink-0">
                     <button
                       type="button"
-                      onClick={handleDeleteCurrentOrder}
+                      onClick={() => {
+                        const mvdMatch = editingTransaction.note?.match(shippingCodePattern);
+                        const mvd = mvdMatch ? mvdMatch[1] : null;
+                        if (mvd) {
+                          if (window.confirm('Bạn có chắc chắn muốn xóa TOÀN BỘ đơn hàng này?')) {
+                            const orderTransactions = transactions.filter(t => t.note?.includes(`[MV?: ${mvd}]`) || t.note?.includes(`[MVĐ: ${mvd}]`));
+                            orderTransactions.forEach(t => deleteDoc(doc(db, 'transactions', t.id)));
+                            setEditingTransaction(null);
+                          }
+                        } else {
+                          handleDeleteTransaction(editingTransaction.id);
+                        }
+                      }}
                       className="flex items-center justify-center gap-2 px-6 py-4 rounded-2xl bg-red-500/10 text-red-500 font-bold hover:bg-red-500 hover:text-white transition-all order-3 sm:order-1"
                     >
                       <Trash2 size={18} />
@@ -7623,7 +7546,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="text-right shrink-0 ml-4">
-                          <p className="text-sm font-black text-neon-blue">{formatCurrency(product.price)}</p>
+                          <p className="text-sm font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}?</p>
                           <p className={cn(
                             "text-[10px] font-bold",
                             product.quantity > 0 ? "text-green-400" : "text-red-400"
@@ -7711,7 +7634,7 @@ export default function App() {
                         onChange={(e) => setEditingCartItem(prev => prev ? ({ ...prev, price: Number(e.target.value) }) : null)}
                         className="w-full glass p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-neon-blue/50 font-black text-neon-blue text-lg"
                       />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500">₫/sp</span>
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500">?/sp</span>
                     </div>
                   </div>
 
@@ -7731,7 +7654,7 @@ export default function App() {
                           onClick={() => setEditingCartItem(prev => prev ? ({ ...prev, discountType: prev.discountType === 'amount' ? 'percent' : 'amount' }) : null)}
                           className="absolute right-1.5 p-1.5 bg-white/5 rounded-lg text-[10px] font-black hover:bg-white/10 transition-all text-red-400 min-w-[24px]"
                         >
-                          {editingCartItem.discountType === 'amount' ? '₫' : '%'}
+                          {editingCartItem.discountType === 'amount' ? '?' : '%'}
                         </button>
                       </div>
                     </div>
@@ -7749,7 +7672,7 @@ export default function App() {
                           onClick={() => setEditingCartItem(prev => prev ? ({ ...prev, surchargeType: prev.surchargeType === 'amount' ? 'percent' : 'amount' }) : null)}
                           className="absolute right-1.5 p-1.5 bg-white/5 rounded-lg text-[10px] font-black hover:bg-white/10 transition-all text-green-400 min-w-[24px]"
                         >
-                          {editingCartItem.surchargeType === 'amount' ? '₫' : '%'}
+                          {editingCartItem.surchargeType === 'amount' ? '?' : '%'}
                         </button>
                       </div>
                     </div>
@@ -7771,8 +7694,8 @@ export default function App() {
                           if (editingCartItem.surchargeType === 'percent') sur = (subtotal * editingCartItem.surcharge / 100);
                           else sur = editingCartItem.surcharge * editingCartItem.quantity;
                         }
-                        return formatCurrency(Math.max(0, subtotal - disc + sur));
-                      })()}
+                        return Math.max(0, subtotal - disc + sur).toLocaleString('vi-VN');
+                      })()}?
                     </span>
                   </div>
 
