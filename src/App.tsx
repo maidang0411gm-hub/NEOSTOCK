@@ -3482,7 +3482,7 @@ export default function App() {
                                 <div className="p-2 flex flex-col flex-1 gap-1">
                                   <h4 className="font-bold text-[10px] md:text-xs line-clamp-2 uppercase tracking-tight leading-tight">{product.name}</h4>
                                   <div className="flex items-center justify-between mt-auto pt-1">
-                                    <span className="text-[10px] md:text-xs font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}?</span>
+                                    <span className="text-[10px] md:text-xs font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}đ</span>
                                     {product.variant && (
                                       <span className="text-[7px] px-1.5 py-0.5 rounded bg-neon-purple/10 text-neon-purple font-bold border border-neon-purple/20 truncate max-w-[50px]">
                                         {product.variant}
@@ -3640,9 +3640,9 @@ export default function App() {
                                               {item.product.variant}
                                             </span>
                                           )}
-                                          <span className="text-white/40 font-bold">{item.product.price.toLocaleString('vi-VN')}?</span>
+                                          <span className="text-white/40 font-bold">{item.product.price.toLocaleString('vi-VN')}đ</span>
                                           {item.unitPrice !== item.product.price && (
-                                            <span className="text-neon-blue font-black bg-neon-blue/10 px-1 rounded">Giá mới: {item.unitPrice.toLocaleString('vi-VN')}?</span>
+                                            <span className="text-neon-blue font-black bg-neon-blue/10 px-1 rounded">Giá mới: {item.unitPrice.toLocaleString('vi-VN')}đ</span>
                                           )}
                                         </div>
                                       </div>
@@ -3667,11 +3667,11 @@ export default function App() {
 
                                       <div className="flex flex-col items-end min-w-[80px] md:min-w-[100px]">
                                         <span className="font-black text-xs md:text-lg text-neon-blue neon-text leading-none">
-                                          {itemTotal.toLocaleString('vi-VN')}?
+                                          {itemTotal.toLocaleString('vi-VN')}đ
                                         </span>
                                         <div className="flex flex-col items-end mt-0.5">
-                                          {discountAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-red-500 uppercase tracking-tighter">-{discountAmount.toLocaleString('vi-VN')}?</span>}
-                                          {surchargeAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-green-500 uppercase tracking-tighter">+{surchargeAmount.toLocaleString('vi-VN')}?</span>}
+                                          {discountAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-red-500 uppercase tracking-tighter">-{discountAmount.toLocaleString('vi-VN')}đ</span>}
+                                          {surchargeAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-green-500 uppercase tracking-tighter">+{surchargeAmount.toLocaleString('vi-VN')}đ</span>}
                                         </div>
                                       </div>
 
@@ -3729,7 +3729,7 @@ export default function App() {
                               </div>
                               <span className="text-lg md:text-2xl font-black text-neon-blue neon-text leading-none">
                                 {currentTotal.toLocaleString('vi-VN')}
-                                <span className="text-[8px] text-gray-500 ml-1">VNĐ</span>
+                                <span className="text-[8px] text-gray-500 ml-1">đ</span>
                               </span>
                             </div>
                           </div>
@@ -3759,7 +3759,7 @@ export default function App() {
                                         onClick={() => setDirectCashReceived(currentTotal)}
                                         className="col-span-3 py-1.5 rounded-lg bg-neon-blue/10 border border-neon-blue/30 text-neon-blue text-[9px] font-bold hover:bg-neon-blue/20 transition-all active:scale-95 uppercase tracking-widest"
                                       >
-                                        Khách Trả Đúng Bằng: {currentTotal.toLocaleString('vi-VN')}VNĐ
+                                        Khách Trả Đúng Bằng: {currentTotal.toLocaleString('vi-VN')}đ
                                       </button>
                                     </div>
 
@@ -3778,7 +3778,7 @@ export default function App() {
                                             onChange={(e) => setDirectCashReceived(Number(e.target.value))}
                                             className="w-full glass px-3 py-2 rounded-xl text-xs font-black text-green-400 focus:outline-none focus:ring-2 focus:ring-green-400/30 border border-white/5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                           />
-                                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-bold text-gray-500">VND</span>
+                                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-bold text-gray-500">đ</span>
                                         </div>
                                       </div>
                                       <div className="space-y-1.5">
@@ -3793,7 +3793,7 @@ export default function App() {
                                           )}>
                                             {Math.max(0, (directCashReceived as number) - currentTotal).toLocaleString('vi-VN')}
                                           </span>
-                                          <span className="text-[8px] font-bold text-gray-500">VND</span>
+                                          <span className="text-[8px] font-bold text-gray-500">đ</span>
                                         </div>
                                       </div>
                                     </div>
@@ -4024,7 +4024,7 @@ export default function App() {
                                             {item.product.variant}
                                           </span>
                                         )}
-                                        <span className="text-[10px] text-neon-blue font-bold">{finalPrice.toLocaleString('vi-VN')}?</span>
+                                        <span className="text-[10px] text-neon-blue font-bold">{finalPrice.toLocaleString('vi-VN')}đ</span>
                                       </div>
                                     </div>
                                   </div>
@@ -4063,12 +4063,12 @@ export default function App() {
                               <div className="glass p-4 rounded-2xl border-white/5 bg-gradient-to-br from-neon-blue/5 to-transparent">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="text-xs text-gray-400">Tạm tính:</span>
-                                  <span className="text-sm font-medium">{currentTotal.toLocaleString('vi-VN')}?</span>
+                                  <span className="text-sm font-medium">{currentTotal.toLocaleString('vi-VN')}đ</span>
                                 </div>
                                 <div className="flex items-center justify-between pt-2 border-t border-white/10">
                                   <span className="text-sm font-bold">Tổng thanh toán:</span>
                                   <span className="text-2xl font-black text-neon-blue">
-                                    {currentTotal.toLocaleString('vi-VN')}?
+                                    {currentTotal.toLocaleString('vi-VN')}đ
                                   </span>
                                 </div>
                               </div>
@@ -4555,7 +4555,7 @@ export default function App() {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 font-mono text-sm">
-                                  {product.price.toLocaleString('vi-VN')}?
+                                  {product.price.toLocaleString('vi-VN')}đ
                                 </td>
                                 <td className="px-6 py-4 text-xs text-gray-500">
                                   {new Date(product.lastUpdated).toLocaleDateString('vi-VN')}
@@ -5102,7 +5102,7 @@ export default function App() {
                                 </td>
 
                                 <td className="px-6 py-4 text-right font-mono text-sm text-neon-blue">
-                                  {isSingle ? (((firstTrans.price || product?.price || 0)).toLocaleString('vi-VN') + ' VND') : '---'}
+                                  {isSingle ? (((firstTrans.price || product?.price || 0)).toLocaleString('vi-VN') + 'đ') : '---'}
                                 </td>
 
                                 <td className="px-6 py-4 font-bold text-center">
@@ -5165,7 +5165,7 @@ export default function App() {
                                                   </div>
                                                   <div className="col-span-2 text-right">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">GIÁ</p>
-                                                    <p className="text-xs font-mono text-neon-blue">{(t.price || p?.price || 0).toLocaleString()}?</p>
+                                                    <p className="text-xs font-mono text-neon-blue">{(t.price || p?.price || 0).toLocaleString('vi-VN')}đ</p>
                                                   </div>
                                                   <div className="col-span-1 text-center">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">SL</p>
@@ -5175,7 +5175,7 @@ export default function App() {
                                                   </div>
                                                   <div className="col-span-2 text-right">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">THANH TOÁN</p>
-                                                    <p className="font-mono font-black text-white">{(t.quantity * (t.price || p?.price || 0)).toLocaleString()}?</p>
+                                                    <p className="font-mono font-black text-white">{(t.quantity * (t.price || p?.price || 0)).toLocaleString('vi-VN')}đ</p>
                                                   </div>
                                                 </div>
                                               );
@@ -5792,7 +5792,7 @@ export default function App() {
                             <div className="space-y-1">
                               <h4 className="text-2xl font-black text-white">
                                 {kpi.label.includes('ĐƠN') ? kpi.value : kpi.value.toLocaleString('vi-VN')}
-                                {!kpi.label.includes('ĐƠN') && <span className="text-xs ml-1 text-gray-400 font-bold">?</span>}
+                                {!kpi.label.includes('ĐƠN') && <span className="text-xs ml-1 text-gray-400 font-bold">đ</span>}
                               </h4>
                               <div className="flex items-center gap-1.5">
                                 <div className={cn(
@@ -5862,7 +5862,7 @@ export default function App() {
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
                             itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                             labelStyle={{ color: '#00f2ff', marginBottom: '4px', fontWeight: '900' }}
-                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', '']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + 'đ', '']}
                           />
                           <Legend
                             verticalAlign="top"
@@ -5921,7 +5921,7 @@ export default function App() {
                           </Pie>
                           <Tooltip
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
-                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', '']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + 'đ', '']}
                           />
                         </PieChart>
                       </ResponsiveContainer>
@@ -5976,7 +5976,7 @@ export default function App() {
                             <p className="text-[10px] text-gray-500 font-mono tracking-widest mt-1">{p.sku}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-black text-white">{p.revenue.toLocaleString('vi-VN')} ?</p>
+                            <p className="text-sm font-black text-white">{p.revenue.toLocaleString('vi-VN')}đ</p>
                             <p className="text-[10px] text-neon-blue font-bold tracking-tighter mt-1">{p.quantity} l??t ban</p>
                           </div>
                         </div>
@@ -6008,7 +6008,7 @@ export default function App() {
                           />
                           <Tooltip
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
-                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', 'Lợi Nhuận']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + 'đ', 'Lợi Nhuận']}
                           />
                           <Bar
                             dataKey="profit"
@@ -6257,7 +6257,7 @@ export default function App() {
                                 {orderTransactionsState.reduce((sum, t) => {
                                   const price = products.find(p => p.id === t.productId)?.price || 0;
                                   return sum + (price * t.quantity);
-                                }, 0).toLocaleString('vi-VN')}?
+                                }, 0).toLocaleString('vi-VN')}đ
                               </span>
                             </div>
                           </div>
@@ -6351,7 +6351,7 @@ export default function App() {
                                     <div className="text-right">
                                       <p className="text-sm font-bold text-neon-blue">x{t.quantity}</p>
                                       <p className="text-xs text-gray-500">
-                                        {((products.find(p => p.id === t.productId)?.price || 0) * t.quantity).toLocaleString('vi-VN')}?
+                                        {((products.find(p => p.id === t.productId)?.price || 0) * t.quantity).toLocaleString('vi-VN')}đ
                                       </p>
                                     </div>
                                     <button
@@ -7644,7 +7644,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="text-right shrink-0 ml-4">
-                          <p className="text-sm font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}?</p>
+                          <p className="text-sm font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}đ</p>
                           <p className={cn(
                             "text-[10px] font-bold",
                             product.quantity > 0 ? "text-green-400" : "text-red-400"
