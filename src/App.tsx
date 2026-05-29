@@ -5063,18 +5063,21 @@ export default function App() {
                                   {isSingle ? (product?.category || '---') : <span className="italic">Đa danh mục</span>}
                                 </td>
 
-                                <td className="px-6 py-4 font-bold text-sm text-center">
+                                <td className="px-6 py-4 text-left">
                                   {group.batchId ? (
-                                    <div className="flex items-center justify-center gap-2">
-                                      <Package size={14} className="text-neon-purple" />
-                                      <span className="text-gray-400 font-normal uppercase tracking-tighter text-[10px]">{group.transactions.length} MẶT HÀNG</span>
+                                    <div className="flex items-center gap-2">
+                                      <Package size={14} className="text-neon-purple shrink-0" />
+                                      <span className="text-gray-400 font-bold uppercase tracking-tighter text-[10px]">{group.transactions.length} MẶT HÀNG</span>
                                     </div>
                                   ) : group.transactions.length > 1 ? (
-                                    <span className="text-gray-400 italic font-normal text-xs">{group.transactions.length} sản phẩm</span>
+                                    <div className="flex items-center gap-2">
+                                      <Boxes size={14} className="text-gray-400 shrink-0" />
+                                      <span className="text-gray-400 italic font-bold text-xs">{group.transactions.length} sản phẩm</span>
+                                    </div>
                                   ) : (
-                                    <div className="flex flex-col items-center gap-1">
+                                    <div className="flex items-center gap-3">
                                       {(group.transactions[0].productImageUrl || product?.imageUrl) && (
-                                        <div className="w-14 h-14 rounded-2xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center">
+                                        <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
                                           <img
                                             src={group.transactions[0].productImageUrl || product?.imageUrl}
                                             alt={group.transactions[0].productName}
@@ -5083,16 +5086,24 @@ export default function App() {
                                           />
                                         </div>
                                       )}
-                                      <span>{group.transactions[0].productName}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => copyToClipboard(group.transactions[0].productSku || '')}
-                                        className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-mono text-gray-400 transition-colors hover:text-neon-blue hover:border-neon-blue/30"
-                                        title="Sao chép mã SKU"
-                                      >
-                                        <span>{group.transactions[0].productSku || '---'}</span>
-                                        <Copy size={10} />
-                                      </button>
+                                      <div className="flex flex-col gap-0.5 min-w-0">
+                                        <span className="font-black text-white text-xs md:text-sm uppercase tracking-tight truncate max-w-[200px]" title={group.transactions[0].productName}>
+                                          {group.transactions[0].productName}
+                                        </span>
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-[10px] font-mono text-gray-500">{group.transactions[0].productSku || '---'}</span>
+                                          {group.transactions[0].productSku && (
+                                            <button
+                                              type="button"
+                                              onClick={() => copyToClipboard(group.transactions[0].productSku || '')}
+                                              className="p-0.5 text-gray-500 hover:text-neon-blue transition-colors rounded hover:bg-white/5"
+                                              title="Sao chép mã SKU"
+                                            >
+                                              <Copy size={10} />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
                                     </div>
                                   )}
                                 </td>
@@ -5236,40 +5247,48 @@ export default function App() {
                                     </span>
                                   ) : group.batchId && (
                                     <span className="text-[9px] font-black text-neon-purple bg-neon-purple/10 px-1.5 py-0.5 rounded uppercase tracking-tighter">
-                                      LO HANG
+                                      LÔ HÀNG
                                     </span>
                                   )}
                                   <p className="text-[9px] text-gray-500 font-mono italic">{new Date(group.timestamp).toLocaleString('vi-VN')}</p>
                                 </div>
-                                <h4 className="font-bold text-sm text-gray-200 truncate uppercase">
-                                  {group.batchId ? group.batchName : (group.transactions.length > 1 ? `${group.transactions.length} sản phẩm` : group.transactions[0].productName)}
-                                </h4>
-                                {group.transactions.length === 1 && (
-                                  <>
-                                    {(group.transactions[0].productImageUrl || products.find(p => p.id === group.transactions[0].productId)?.imageUrl) && (
-                                      <div className="mt-2 w-14 h-14 rounded-2xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center">
-                                        <img
-                                          src={group.transactions[0].productImageUrl || products.find(p => p.id === group.transactions[0].productId)?.imageUrl}
-                                          alt={group.transactions[0].productName}
-                                          className="w-full h-full object-cover"
-                                          loading="lazy"
-                                        />
-                                      </div>
+                                <div className="flex gap-3 items-start mt-2">
+                                  {group.transactions.length === 1 && (group.transactions[0].productImageUrl || products.find(p => p.id === group.transactions[0].productId)?.imageUrl) && (
+                                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                                      <img
+                                        src={group.transactions[0].productImageUrl || products.find(p => p.id === group.transactions[0].productId)?.imageUrl}
+                                        alt={group.transactions[0].productName}
+                                        className="w-full h-full object-cover"
+                                        loading="lazy"
+                                      />
+                                    </div>
+                                  )}
+                                  <div className="flex flex-col gap-0.5 min-w-0">
+                                    <h4 className="font-bold text-sm text-gray-200 uppercase truncate">
+                                      {group.batchId ? group.batchName : (group.transactions.length > 1 ? `${group.transactions.length} sản phẩm` : group.transactions[0].productName)}
+                                    </h4>
+                                    {group.transactions.length === 1 && (
+                                      <>
+                                        <p className="text-[9px] text-gray-500 uppercase tracking-widest font-black">
+                                          {products.find(p => p.id === group.transactions[0].productId)?.category || 'KHÁC'}
+                                        </p>
+                                        <div className="flex items-center gap-1 mt-0.5">
+                                          <span className="text-[10px] font-mono text-gray-500">{group.transactions[0].productSku || '---'}</span>
+                                          {group.transactions[0].productSku && (
+                                            <button
+                                              type="button"
+                                              onClick={() => copyToClipboard(group.transactions[0].productSku || '')}
+                                              className="p-0.5 text-gray-500 hover:text-neon-blue transition-colors rounded hover:bg-white/5"
+                                              title="Sao chép mã SKU"
+                                            >
+                                              <Copy size={10} />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </>
                                     )}
-                                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-black mt-0.5">
-                                      {products.find(p => p.id === group.transactions[0].productId)?.category || 'KHÁC'}
-                                    </p>
-                                    <button
-                                      type="button"
-                                      onClick={() => copyToClipboard(group.transactions[0].productSku || '')}
-                                      className="mt-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-mono text-gray-400 transition-colors hover:text-neon-blue hover:border-neon-blue/30"
-                                      title="Sao chép mã SKU"
-                                    >
-                                      <span>{group.transactions[0].productSku || '---'}</span>
-                                      <Copy size={10} />
-                                    </button>
-                                  </>
-                                )}
+                                  </div>
+                                </div>
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
