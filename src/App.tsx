@@ -3724,11 +3724,11 @@ export default function App() {
                                   <ChevronUp size={14} className={cn("transition-transform duration-300", isCartExtraVisible ? "rotate-0" : "rotate-180")} />
                                 </button>
                                 <span className="text-[10px] md:text-xs font-black uppercase tracking-[0.1em] text-gray-300">
-                                  Tổng cộng: <span className="text-[8px] text-gray-500 ml-1">({cart.reduce((a, b) => a + b.quantity, 0)} MON)</span>
+                                  Tổng cộng: <span className="text-[8px] text-gray-500 ml-1">({cart.reduce((a, b) => a + b.quantity, 0)} MÓN)</span>
                                 </span>
                               </div>
                               <span className="text-lg md:text-2xl font-black text-neon-blue neon-text leading-none">
-                                {currentTotal.toLocaleString('vi-VN')}?
+                                {currentTotal.toLocaleString('vi-VN')}VND
                               </span>
                             </div>
                           </div>
