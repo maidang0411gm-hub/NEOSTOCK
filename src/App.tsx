@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useDeferredValue, startTransition, Component } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Component } from 'react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -150,18 +150,6 @@ function handleDataError(error: unknown, operationType: OperationType, path: str
   throw new Error(JSON.stringify(errInfo));
 }
 
-function formatCurrency(amount: number) {
-  return `${Number(amount || 0).toLocaleString('vi-VN')}₫`;
-}
-
-function normalizeSearchValue(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function sortProductsByOrder(items: Product[]) {
-  return [...items].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-}
-
 // Auth Component
 function AuthScreen({ onAuthSuccess }: { onAuthSuccess: () => void }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -289,6 +277,17 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const productsRef = useRef<Product[]>([]);
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
+  const applyProductsOptimistically = (updater: (prev: Product[]) => Product[]) => {
+    setProducts(prev => {
+      const next = updater(prev);
+      productsRef.current = next;
+      return next;
+    });
+  };
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'transactions' | 'history' | 'settings' | 'sales' | 'analytics'>('dashboard');
@@ -323,24 +322,14 @@ export default function App() {
     const applyRepair = () => repairVietnameseUi();
     applyRepair();
 
-    let scheduled = false;
-    let animationFrameId = 0;
-    const scheduleRepair = () => {
-      if (scheduled) return;
-      scheduled = true;
-      animationFrameId = window.requestAnimationFrame(() => {
-        scheduled = false;
-        applyRepair();
-      });
-    };
-
     const observer = new MutationObserver(() => {
-      scheduleRepair();
+      applyRepair();
     });
 
     observer.observe(document.body, {
       subtree: true,
       childList: true,
+      characterData: true,
       attributes: true,
       attributeFilter: ['title', 'placeholder', 'aria-label'],
     });
@@ -353,7 +342,6 @@ export default function App() {
 
     return () => {
       observer.disconnect();
-      window.cancelAnimationFrame(animationFrameId);
       window.alert = originalAlert;
       window.confirm = originalConfirm;
     };
@@ -597,15 +585,8 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
-  const deferredInventorySearchQuery = useDeferredValue(searchQuery);
-  const deferredSalesSearchTerm = useDeferredValue(salesSearchTerm);
-  const deferredSelectorSearch = useDeferredValue(selectorSearch);
-  const deferredOnlineOrderSearchQuery = useDeferredValue(onlineOrderSearchQuery);
-
   const barcodeBuffer = useRef('');
   const lastKeyTime = useRef(0);
-  const serverProductsRef = useRef<Product[]>([]);
-  const reorderSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [imageUploadMethod, setImageUploadMethod] = useState<'device' | 'url'>('device');
   const [isKeyboardEnabled, setIsKeyboardEnabled] = useState(() => {
@@ -627,45 +608,6 @@ export default function App() {
     const combined = Array.from(new Set([...fromProducts, ...predefinedCategories]));
     return combined.sort();
   }, [products, predefinedCategories]);
-
-  const activeProducts = useMemo(() => products.filter(p => !p.isHeader), [products]);
-
-  const productByNormalizedSku = useMemo(() => {
-    const entries = activeProducts.map(product => [product.sku.toLowerCase(), product] as const);
-    return new Map(entries);
-  }, [activeProducts]);
-
-  const lowStockProducts = useMemo(() => (
-    [...activeProducts]
-      .filter(product => product.quantity <= product.minStock)
-      .sort((a, b) => (b.recommendedStock - b.quantity) - (a.recommendedStock - a.quantity))
-  ), [activeProducts]);
-
-  const inventoryCategoryOptions = useMemo(() => {
-    const productCategories = Array.from(new Set(activeProducts.map(p => p.category).filter(Boolean)))
-      .filter(category => category && category !== 'Tất cả');
-    return ['Tất cả', ...productCategories];
-  }, [activeProducts]);
-
-  const filteredSalesProducts = useMemo(() => {
-    const normalizedSearch = normalizeSearchValue(deferredSalesSearchTerm);
-    if (!normalizedSearch) return activeProducts;
-
-    return activeProducts.filter(product =>
-      product.name.toLowerCase().includes(normalizedSearch) ||
-      product.sku.toLowerCase().includes(normalizedSearch)
-    );
-  }, [activeProducts, deferredSalesSearchTerm]);
-
-  const filteredSelectorProducts = useMemo(() => {
-    const normalizedSearch = normalizeSearchValue(deferredSelectorSearch);
-    if (!normalizedSearch) return activeProducts;
-
-    return activeProducts.filter(product =>
-      product.name.toLowerCase().includes(normalizedSearch) ||
-      product.sku.toLowerCase().includes(normalizedSearch)
-    );
-  }, [activeProducts, deferredSelectorSearch]);
 
   const [historySettings, setHistorySettings] = useState(() => {
     const saved = localStorage.getItem('neostock_history_settings');
@@ -782,16 +724,6 @@ export default function App() {
       id: mvd // Use MV? as the ID for the group
     })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [transactions, onlineDateFilter, onlineDateRange]);
-
-  const filteredOnlineOrders = useMemo(() => {
-    const normalizedSearch = normalizeSearchValue(deferredOnlineOrderSearchQuery);
-    if (!normalizedSearch) return groupedOnlineOrders.slice(0, 20);
-
-    return groupedOnlineOrders.filter(order =>
-      order.shippingCode.toLowerCase().includes(normalizedSearch) ||
-      order.transactions.some(t => t.productName.toLowerCase().includes(normalizedSearch))
-    ).slice(0, 20);
-  }, [deferredOnlineOrderSearchQuery, groupedOnlineOrders]);
 
   const analyticsData = useMemo(() => {
     // 1. Filter transactions by date range
@@ -1174,9 +1106,10 @@ export default function App() {
 
     const productsQuery = query(collection(db, 'products'), where('userId', '==', user.uid));
     const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
-      const productsData = sortProductsByOrder(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product)));
-      serverProductsRef.current = productsData;
-      setProducts(productsData);
+      const productsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
+      const sortedData = productsData.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      productsRef.current = sortedData;
+      setProducts(sortedData);
     }, (error) => handleDataError(error, OperationType.LIST, 'products'));
 
     const transactionsQuery = query(collection(db, 'transactions'), where('userId', '==', user.uid));
@@ -1186,9 +1119,6 @@ export default function App() {
     }, (error) => handleDataError(error, OperationType.LIST, 'transactions'));
 
     return () => {
-      if (reorderSaveTimeoutRef.current) {
-        clearTimeout(reorderSaveTimeoutRef.current);
-      }
       unsubscribeProducts();
       unsubscribeTransactions();
     };
@@ -1209,6 +1139,7 @@ export default function App() {
   }, []);
 
   const stats = useMemo(() => {
+    const activeProducts = products.filter(p => !p.isHeader);
     const totalItems = activeProducts.reduce((acc, p) => acc + p.quantity, 0);
     const lowStockItems = activeProducts.filter(p => p.quantity <= p.minStock).length;
     const totalValue = activeProducts.reduce((acc, p) => acc + (p.quantity * p.price), 0);
@@ -1219,18 +1150,15 @@ export default function App() {
     }).length;
 
     return { totalItems, lowStockItems, totalValue, recentTransCount };
-  }, [activeProducts, transactions]);
+  }, [products, transactions]);
 
   const sortedProducts = useMemo(() => {
-    const normalizedSearch = normalizeSearchValue(deferredInventorySearchQuery);
-    const filtered = normalizedSearch
-      ? products.filter(p =>
-        p.name.toLowerCase().includes(normalizedSearch) ||
-        p.sku.toLowerCase().includes(normalizedSearch) ||
-        p.variant?.toLowerCase().includes(normalizedSearch) ||
-        (p.isHeader && p.name.toLowerCase().includes(normalizedSearch))
-      )
-      : products;
+    const filtered = products.filter(p =>
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.sku.includes(searchQuery) ||
+      p.variant?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.isHeader && p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
 
     switch (sortBy) {
       case 'name':
@@ -1242,41 +1170,31 @@ export default function App() {
       default:
         return [...filtered].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
     }
-  }, [deferredInventorySearchQuery, products, sortBy]);
-
-  const applyProductsOptimistically = (updater: (prev: Product[]) => Product[]) => {
-    startTransition(() => {
-      setProducts(prev => sortProductsByOrder(updater(prev)));
-    });
-  };
-
-  const persistProductOrder = async (orderedProducts: Product[]) => {
-    await Promise.all(
-      orderedProducts.map((product, idx) => updateDoc(doc(db, 'products', product.id), { sortOrder: idx })),
-    );
-  };
+  }, [products, searchQuery, sortBy]);
 
   const moveProduct = async (id: string, direction: 'up' | 'down') => {
     if (sortBy !== 'manual' || isOrderLocked || !user) return;
 
-    const orderedProducts = sortProductsByOrder(products);
-    const previousProducts = products;
-    const index = orderedProducts.findIndex(p => p.id === id);
+    const index = products.findIndex(p => p.id === id);
     if (index === -1) return;
     if (direction === 'up' && index === 0) return;
-    if (direction === 'down' && index === orderedProducts.length - 1) return;
+    if (direction === 'down' && index === products.length - 1) return;
 
-    const newProducts = [...orderedProducts];
+    const newProducts = [...products].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    [newProducts[index], newProducts[targetIndex]] = [newProducts[targetIndex], newProducts[index]];
-    const optimisticProducts = newProducts.map((product, idx) => ({ ...product, sortOrder: idx }));
-
-    applyProductsOptimistically(() => optimisticProducts);
 
     try {
-      await persistProductOrder(optimisticProducts);
+      const p1 = newProducts[index];
+      const p2 = newProducts[targetIndex];
+
+      const p1Ref = doc(db, 'products', p1.id);
+      const p2Ref = doc(db, 'products', p2.id);
+
+      await Promise.all([
+        updateDoc(p1Ref, { sortOrder: p2.sortOrder }),
+        updateDoc(p2Ref, { sortOrder: p1.sortOrder })
+      ]);
     } catch (error) {
-      setProducts(previousProducts.length > 0 ? previousProducts : serverProductsRef.current);
       handleDataError(error, OperationType.UPDATE, 'products/move');
     }
   };
@@ -1292,54 +1210,44 @@ export default function App() {
         editingBatch.transactions.map((transaction: Transaction) => [transaction.id, transaction]),
       );
       const editedIds = new Set(editBatchTransactions.map(transaction => transaction.id));
-      const inventoryAdjustments = new Map<string, number>();
 
-      editingBatch.transactions.forEach((transaction: Transaction) => {
-        if (!transaction.productId) return;
-        const revertDelta = transaction.type === 'in' ? -transaction.quantity : transaction.quantity;
-        inventoryAdjustments.set(
-          transaction.productId,
-          (inventoryAdjustments.get(transaction.productId) || 0) + revertDelta,
-        );
-      });
+      for (const originalTransaction of editingBatch.transactions as Transaction[]) {
+        if (editedIds.has(originalTransaction.id)) continue;
 
-      editBatchTransactions.forEach((transaction: Transaction) => {
-        if (!transaction.productId) return;
-        const applyDelta = transaction.type === 'in' ? transaction.quantity : -transaction.quantity;
-        inventoryAdjustments.set(
-          transaction.productId,
-          (inventoryAdjustments.get(transaction.productId) || 0) + applyDelta,
-        );
-      });
-
-      await Promise.all(
-        Array.from(inventoryAdjustments.entries()).map(async ([productId, delta]) => {
-          if (delta === 0) return;
-          const product = products.find(item => item.id === productId);
-          if (!product) return;
-          await updateDoc(doc(db, 'products', productId), {
-            quantity: product.quantity + delta,
+        const product = products.find(item => item.id === originalTransaction.productId);
+        if (product) {
+          const restoreDelta = originalTransaction.type === 'in' ? -originalTransaction.quantity : originalTransaction.quantity;
+          await updateDoc(doc(db, 'products', originalTransaction.productId), {
+            quantity: product.quantity + restoreDelta,
             lastUpdated: now,
           });
-        }),
-      );
+        }
 
-      await Promise.all(
-        editingBatch.transactions
-          .filter((transaction: Transaction) => !editedIds.has(transaction.id))
-          .map((transaction: Transaction) => deleteDoc(doc(db, 'transactions', transaction.id))),
-      );
+        await deleteDoc(doc(db, 'transactions', originalTransaction.id));
+      }
 
-      await Promise.all(
-        editBatchTransactions.map((transaction) =>
-          updateDoc(doc(db, 'transactions', transaction.id), {
-            batchName: editBatchName,
-            note: editBatchNote,
-            quantity: transaction.quantity,
-            totalPrice: (transaction.price || 0) * transaction.quantity,
-          }),
-        ),
-      );
+      for (const transaction of editBatchTransactions) {
+        const originalTransaction = originalById.get(transaction.id);
+        const quantityDiff = transaction.quantity - (originalTransaction?.quantity ?? 0);
+
+        if (quantityDiff !== 0) {
+          const product = products.find(item => item.id === transaction.productId);
+          if (product) {
+            const stockAdjustment = transaction.type === 'in' ? quantityDiff : -quantityDiff;
+            await updateDoc(doc(db, 'products', transaction.productId), {
+              quantity: product.quantity + stockAdjustment,
+              lastUpdated: now,
+            });
+          }
+        }
+
+        await updateDoc(doc(db, 'transactions', transaction.id), {
+          batchName: editBatchName,
+          note: editBatchNote,
+          quantity: transaction.quantity,
+          totalPrice: (transaction.price || 0) * transaction.quantity,
+        });
+      }
 
       setIsBatchEditModalOpen(false);
       setEditingBatch(null);
@@ -1362,33 +1270,19 @@ export default function App() {
     setIsSaving(true);
     try {
       const now = new Date().toISOString();
-      const inventoryAdjustments = new Map<string, number>();
 
-      editingBatch.transactions.forEach((transaction: Transaction) => {
-        if (!transaction.productId) return;
-        const restoreDelta = transaction.type === 'in' ? -transaction.quantity : transaction.quantity;
-        inventoryAdjustments.set(
-          transaction.productId,
-          (inventoryAdjustments.get(transaction.productId) || 0) + restoreDelta,
-        );
-      });
-
-      await Promise.all(
-        Array.from(inventoryAdjustments.entries()).map(async ([productId, delta]) => {
-          const product = products.find(item => item.id === productId);
-          if (!product) return;
-          await updateDoc(doc(db, 'products', productId), {
-            quantity: product.quantity + delta,
+      for (const transaction of editingBatch.transactions as Transaction[]) {
+        const product = products.find(item => item.id === transaction.productId);
+        if (product) {
+          const restoreDelta = transaction.type === 'in' ? -transaction.quantity : transaction.quantity;
+          await updateDoc(doc(db, 'products', transaction.productId), {
+            quantity: product.quantity + restoreDelta,
             lastUpdated: now,
           });
-        }),
-      );
+        }
 
-      await Promise.all(
-        editingBatch.transactions.map((transaction: Transaction) =>
-          deleteDoc(doc(db, 'transactions', transaction.id)),
-        ),
-      );
+        await deleteDoc(doc(db, 'transactions', transaction.id));
+      }
 
       setIsBatchEditModalOpen(false);
       setEditingBatch(null);
@@ -1502,53 +1396,6 @@ export default function App() {
     setOrderTransactionsState(prev => prev.filter(t => t.id !== id));
   };
 
-  const handleDeleteCurrentOrder = async () => {
-    if (!editingTransaction || !user) return;
-
-    const transactionsToDelete = originalOrderTransactions.length > 0 ? originalOrderTransactions : [editingTransaction];
-    if (transactionsToDelete.length === 0) return;
-    if (!window.confirm('Bạn có chắc chắn muốn xóa TOÀN BỘ đơn hàng này?')) return;
-
-    setIsSaving(true);
-    try {
-      const now = new Date().toISOString();
-      const inventoryAdjustments = new Map<string, number>();
-
-      transactionsToDelete.forEach((transaction) => {
-        if (!transaction.productId) return;
-        const restoreDelta = transaction.type === 'in' ? -transaction.quantity : transaction.quantity;
-        inventoryAdjustments.set(
-          transaction.productId,
-          (inventoryAdjustments.get(transaction.productId) || 0) + restoreDelta,
-        );
-      });
-
-      await Promise.all(
-        Array.from(inventoryAdjustments.entries()).map(async ([productId, delta]) => {
-          const product = products.find(item => item.id === productId);
-          if (!product) return;
-          await updateDoc(doc(db, 'products', productId), {
-            quantity: product.quantity + delta,
-            lastUpdated: now,
-          });
-        }),
-      );
-
-      await Promise.all(
-        transactionsToDelete.map((transaction) => deleteDoc(doc(db, 'transactions', transaction.id))),
-      );
-
-      setEditingTransaction(null);
-      setOrderTransactionsState([]);
-      setOriginalOrderTransactions([]);
-      alert('Đã xóa đơn hàng thành công!');
-    } catch (error) {
-      handleDataError(error, OperationType.DELETE, 'transactions/order');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleAddProductToOrder = () => {
     if (!user || !editingTransaction || !addProductSku) return;
 
@@ -1610,29 +1457,23 @@ export default function App() {
     setIsProductSelectorOpen(false);
   };
 
-  const handleReorder = (newOrder: Product[]) => {
+  const handleReorder = async (newOrder: Product[]) => {
     if (sortBy !== 'manual' || searchQuery || isOrderLocked || !user) return;
 
-    const optimisticOrder = newOrder.map((product, idx) => ({ ...product, sortOrder: idx }));
-    applyProductsOptimistically(() => optimisticOrder);
-
-    if (reorderSaveTimeoutRef.current) {
-      clearTimeout(reorderSaveTimeoutRef.current);
+    try {
+      const batch = newOrder.map((p, idx) => {
+        const productRef = doc(db, 'products', p.id);
+        return updateDoc(productRef, { sortOrder: idx });
+      });
+      await Promise.all(batch);
+    } catch (error) {
+      handleDataError(error, OperationType.UPDATE, 'products/reorder');
     }
-
-    reorderSaveTimeoutRef.current = setTimeout(async () => {
-      try {
-        await persistProductOrder(optimisticOrder);
-      } catch (error) {
-        setProducts(serverProductsRef.current);
-        handleDataError(error, OperationType.UPDATE, 'products/reorder');
-      }
-    }, 250);
   };
 
   const handleScan = async (sku: string) => {
     setLastScanTime(Date.now());
-    const product = products.find(p => p.sku === sku);
+    const product = productsRef.current.find(p => p.sku === sku);
 
     if (isBatchMode) {
       if (product) {
@@ -1654,10 +1495,18 @@ export default function App() {
           return;
         }
 
+        const nextQty = type === 'in' ? product.quantity + quickQuantity : product.quantity - quickQuantity;
+
+        // Cập nhật tồn kho cục bộ ngay lập tức (optimistic update) để giao diện hiển thị đúng
+        // và lượt quét tiếp theo có dữ liệu chính xác
+        applyProductsOptimistically(prev =>
+          prev.map(p => p.id === product.id ? { ...p, quantity: nextQty, lastUpdated: new Date().toISOString() } : p)
+        );
+
         try {
           const productRef = doc(db, 'products', product.id);
           await updateDoc(productRef, {
-            quantity: type === 'in' ? product.quantity + quickQuantity : product.quantity - quickQuantity,
+            quantity: nextQty,
             lastUpdated: new Date().toISOString()
           });
 
@@ -1795,15 +1644,11 @@ export default function App() {
 
   const handleDeleteProduct = async (id: string) => {
     if (!user) return;
-    const previousProducts = products;
     setDeletingProduct(null);
     setContextMenu(null);
-    applyProductsOptimistically(prev => prev.filter(product => product.id !== id));
-
     try {
       await deleteDoc(doc(db, 'products', id));
     } catch (error) {
-      setProducts(previousProducts);
       handleDataError(error, OperationType.DELETE, `products/${id}`);
     }
   };
@@ -1815,20 +1660,15 @@ export default function App() {
     // but for now let's just confirm and use writeBatch.
     if (!window.confirm(`Bạn có chắc chắn muốn xóa ${checkedProducts.length} sản phẩm đã chọn?`)) return;
 
-    const idsToDelete = new Set<string>(checkedProducts);
-    const previousProducts = products;
-    applyProductsOptimistically(prev => prev.filter(product => !idsToDelete.has(product.id)));
-    setCheckedProducts([]);
-
     const batch = writeBatch(db);
-    idsToDelete.forEach(id => {
+    checkedProducts.forEach(id => {
       batch.delete(doc(db, 'products', id));
     });
 
     try {
       await batch.commit();
+      setCheckedProducts([]);
     } catch (error) {
-      setProducts(previousProducts);
       handleDataError(error, OperationType.DELETE, 'products/batch');
     }
   };
@@ -1837,18 +1677,13 @@ export default function App() {
     if (!renamingProduct || !user) return;
     const productId = renamingProduct.id;
     const newName = renameValue;
-    const previousProducts = products;
     setRenamingProduct(null);
     setRenameValue('');
     setContextMenu(null);
-    applyProductsOptimistically(prev => prev.map(product => (
-      product.id === productId ? { ...product, name: newName } : product
-    )));
     try {
       const productRef = doc(db, 'products', productId);
       await updateDoc(productRef, { name: newName });
     } catch (error) {
-      setProducts(previousProducts);
       handleDataError(error, OperationType.UPDATE, `products/${productId}`);
     }
   };
@@ -2055,11 +1890,8 @@ export default function App() {
 
   const addHeaderRow = async (relativeToProduct: Product, position: 'above' | 'below') => {
     if (!user) return;
-    const previousProducts = products;
     try {
-      const newHeaderRef = doc(collection(db, 'products'));
-      const newHeader: Product = {
-        id: newHeaderRef.id,
+      const newHeader: Omit<Product, 'id'> = {
         sku: '',
         name: 'TIÊU ĐỀ MỚI',
         category: '',
@@ -2074,33 +1906,30 @@ export default function App() {
         userId: user.uid
       };
 
-      const sorted = sortProductsByOrder(products);
+      const sorted = [...products].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
       const relativeIndex = sorted.findIndex(p => p.id === relativeToProduct.id);
 
       if (relativeIndex === -1) return;
 
       const newSorted = [...sorted];
       if (position === 'above') {
-        newSorted.splice(relativeIndex, 0, newHeader);
+        newSorted.splice(relativeIndex, 0, newHeader as any);
       } else {
-        newSorted.splice(relativeIndex + 1, 0, newHeader);
+        newSorted.splice(relativeIndex + 1, 0, newHeader as any);
       }
 
+      const batch = newSorted.map((p, idx) => {
+        if ('id' in p) {
+          const productRef = doc(db, 'products', p.id);
+          return updateDoc(productRef, { sortOrder: idx });
+        } else {
+          return addDoc(collection(db, 'products'), { ...p, sortOrder: idx });
+        }
+      });
+      await Promise.all(batch);
       setContextMenu(null);
       setSortBy('manual');
-      const optimisticProducts = newSorted.map((product, idx) => ({ ...product, sortOrder: idx }));
-      applyProductsOptimistically(() => optimisticProducts);
-
-      await Promise.all(
-        optimisticProducts.map((product, idx) => {
-          if (product.id === newHeader.id) {
-            return setDoc(newHeaderRef, { ...product, sortOrder: idx });
-          }
-          return updateDoc(doc(db, 'products', product.id), { sortOrder: idx });
-        }),
-      );
     } catch (error) {
-      setProducts(previousProducts);
       handleDataError(error, OperationType.CREATE, 'products/header');
     }
   };
@@ -2335,15 +2164,11 @@ export default function App() {
   const handleAddProduct = async () => {
     if (!user) return;
     const productData = { ...formData };
-    const previousProducts = products;
     setIsModalOpen(null);
-    setSelectedProduct(null);
     setFormData({ quantity: 1, note: '', name: '', sku: '', category: '', variant: '', minStock: 5, recommendedStock: 10, price: 0, costPrice: 0, imageUrl: '' });
 
     try {
-      const newProductRef = doc(collection(db, 'products'));
-      const newProduct: Product = {
-        id: newProductRef.id,
+      const newProduct: Omit<Product, 'id'> = {
         sku: productData.sku,
         name: productData.name,
         category: productData.category,
@@ -2360,10 +2185,8 @@ export default function App() {
         userId: user.uid
       };
 
-      applyProductsOptimistically(prev => [...prev, newProduct]);
-      await setDoc(newProductRef, newProduct);
+      await addDoc(collection(db, 'products'), newProduct);
     } catch (error) {
-      setProducts(previousProducts);
       handleDataError(error, OperationType.CREATE, 'products');
     }
   };
@@ -2391,14 +2214,12 @@ export default function App() {
 
     const productId = selectedProduct.id;
     const productData = { ...formData };
-    const previousProducts = products;
     setIsModalOpen(null);
-    setSelectedProduct(null);
     setFormData({ quantity: 1, note: '', name: '', sku: '', category: '', variant: '', minStock: 5, recommendedStock: 10, price: 0, costPrice: 0, imageUrl: '' });
 
     try {
-      const updatedProduct: Product = {
-        ...selectedProduct,
+      const productRef = doc(db, 'products', productId);
+      await updateDoc(productRef, {
         sku: productData.sku,
         name: productData.name,
         category: productData.category,
@@ -2411,28 +2232,8 @@ export default function App() {
         imageUrl: productData.imageUrl,
         note: productData.note,
         lastUpdated: new Date().toISOString()
-      };
-      applyProductsOptimistically(prev => prev.map(product => (
-        product.id === productId ? updatedProduct : product
-      )));
-
-      const productRef = doc(db, 'products', productId);
-      await updateDoc(productRef, {
-        sku: updatedProduct.sku,
-        name: updatedProduct.name,
-        category: updatedProduct.category,
-        variant: updatedProduct.variant,
-        quantity: updatedProduct.quantity,
-        minStock: updatedProduct.minStock,
-        recommendedStock: updatedProduct.recommendedStock,
-        price: updatedProduct.price,
-        costPrice: updatedProduct.costPrice,
-        imageUrl: updatedProduct.imageUrl,
-        note: updatedProduct.note,
-        lastUpdated: updatedProduct.lastUpdated
       });
     } catch (error) {
-      setProducts(previousProducts);
       handleDataError(error, OperationType.UPDATE, `products/${productId}`);
     }
   };
@@ -2845,7 +2646,10 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                          {lowStockProducts.map(product => (
+                          {products
+                            .filter(p => !p.isHeader && p.quantity <= p.minStock)
+                            .sort((a, b) => (b.recommendedStock - b.quantity) - (a.recommendedStock - a.quantity))
+                            .map(product => (
                               <tr key={product.id} className="hover:bg-white/5 transition-colors group">
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-3">
@@ -2917,7 +2721,7 @@ export default function App() {
                             ))}
                         </tbody>
                       </table>
-                      {lowStockProducts.length === 0 && (
+                      {products.filter(p => !p.isHeader && p.quantity <= p.minStock).length === 0 && (
                         <div className="text-center py-12 text-gray-500">
                           <Check className="mx-auto mb-2 text-green-400" size={32} />
                           <p>Tất cả sản phẩm đều đủ hàng.</p>
@@ -3572,7 +3376,7 @@ export default function App() {
                               onChange={(e) => setSalesSearchTerm(e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' && salesSearchTerm) {
-                                  const exactMatch = productByNormalizedSku.get(normalizeSearchValue(salesSearchTerm));
+                                  const exactMatch = products.find(p => p.sku.toLowerCase() === salesSearchTerm.toLowerCase() && !p.isHeader);
                                   if (exactMatch) {
                                     addToCart(exactMatch);
                                     setSalesSearchTerm('');
@@ -3586,7 +3390,12 @@ export default function App() {
                         </div>
 
                         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 overflow-y-auto pr-1 custom-scrollbar flex-1 pb-4">
-                          {filteredSalesProducts.map(product => (
+                          {products
+                            .filter(p => !p.isHeader && (
+                              p.name.toLowerCase().includes(salesSearchTerm.toLowerCase()) ||
+                              p.sku.toLowerCase().includes(salesSearchTerm.toLowerCase())
+                            ))
+                            .map(product => (
                               <button
                                 key={product.id}
                                 onClick={() => addToCart(product)}
@@ -3612,7 +3421,7 @@ export default function App() {
                                 <div className="p-2 flex flex-col flex-1 gap-1">
                                   <h4 className="font-bold text-[10px] md:text-xs line-clamp-2 uppercase tracking-tight leading-tight">{product.name}</h4>
                                   <div className="flex items-center justify-between mt-auto pt-1">
-                                    <span className="text-[10px] md:text-xs font-black text-neon-blue">{formatCurrency(product.price)}</span>
+                                    <span className="text-[10px] md:text-xs font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}?</span>
                                     {product.variant && (
                                       <span className="text-[7px] px-1.5 py-0.5 rounded bg-neon-purple/10 text-neon-purple font-bold border border-neon-purple/20 truncate max-w-[50px]">
                                         {product.variant}
@@ -3770,9 +3579,9 @@ export default function App() {
                                               {item.product.variant}
                                             </span>
                                           )}
-                                          <span className="text-white/40 font-bold">{formatCurrency(item.product.price)}</span>
+                                          <span className="text-white/40 font-bold">{item.product.price.toLocaleString('vi-VN')}?</span>
                                           {item.unitPrice !== item.product.price && (
-                                            <span className="text-neon-blue font-black bg-neon-blue/10 px-1 rounded">Giá mới: {formatCurrency(item.unitPrice)}</span>
+                                            <span className="text-neon-blue font-black bg-neon-blue/10 px-1 rounded">Giá mới: {item.unitPrice.toLocaleString('vi-VN')}?</span>
                                           )}
                                         </div>
                                       </div>
@@ -3797,11 +3606,11 @@ export default function App() {
 
                                       <div className="flex flex-col items-end min-w-[80px] md:min-w-[100px]">
                                         <span className="font-black text-xs md:text-lg text-neon-blue neon-text leading-none">
-                                          {formatCurrency(itemTotal)}
+                                          {itemTotal.toLocaleString('vi-VN')}?
                                         </span>
                                         <div className="flex flex-col items-end mt-0.5">
-                                          {discountAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-red-500 uppercase tracking-tighter">-{formatCurrency(discountAmount)}</span>}
-                                          {surchargeAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-green-500 uppercase tracking-tighter">+{formatCurrency(surchargeAmount)}</span>}
+                                          {discountAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-red-500 uppercase tracking-tighter">-{discountAmount.toLocaleString('vi-VN')}?</span>}
+                                          {surchargeAmount > 0 && <span className="text-[8px] md:text-[9px] font-black text-green-500 uppercase tracking-tighter">+{surchargeAmount.toLocaleString('vi-VN')}?</span>}
                                         </div>
                                       </div>
 
@@ -3858,7 +3667,7 @@ export default function App() {
                                 </span>
                               </div>
                               <span className="text-lg md:text-2xl font-black text-neon-blue neon-text leading-none">
-                                {formatCurrency(currentTotal)}
+                                {currentTotal.toLocaleString('vi-VN')}?
                               </span>
                             </div>
                           </div>
@@ -3888,7 +3697,7 @@ export default function App() {
                                         onClick={() => setDirectCashReceived(currentTotal)}
                                         className="col-span-3 py-1.5 rounded-lg bg-neon-blue/10 border border-neon-blue/30 text-neon-blue text-[9px] font-bold hover:bg-neon-blue/20 transition-all active:scale-95 uppercase tracking-widest"
                                       >
-                                        Khach ??a ??: {formatCurrency(currentTotal)}
+                                        Khach ??a ??: {currentTotal.toLocaleString('vi-VN')}?
                                       </button>
                                     </div>
 
@@ -3920,7 +3729,7 @@ export default function App() {
                                             "text-xs font-black",
                                             (directCashReceived as number) >= currentTotal ? "text-neon-purple" : "text-gray-500"
                                           )}>
-                                            {formatCurrency(Math.max(0, (directCashReceived as number) - currentTotal))}
+                                            {Math.max(0, (directCashReceived as number) - currentTotal).toLocaleString('vi-VN')}
                                           </span>
                                           <span className="text-[8px] font-bold text-gray-500">VND</span>
                                         </div>
@@ -4010,7 +3819,7 @@ export default function App() {
                                     onChange={(e) => setSalesSearchTerm(e.target.value)}
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter' && salesSearchTerm) {
-                                        const exactMatch = productByNormalizedSku.get(normalizeSearchValue(salesSearchTerm));
+                                        const exactMatch = products.find(p => p.sku.toLowerCase() === salesSearchTerm.toLowerCase() && !p.isHeader);
                                         if (exactMatch) {
                                           addToCart(exactMatch);
                                           setSalesSearchTerm('');
@@ -4025,7 +3834,9 @@ export default function App() {
                               <div className="relative w-full">
                                 {salesSearchTerm && (
                                   <div className="absolute top-0 left-0 right-0 mt-2 glass rounded-2xl border border-white/10 shadow-2xl z-50 max-h-[300px] overflow-y-auto custom-scrollbar">
-                                    {filteredSalesProducts.map(product => (
+                                    {products
+                                      .filter(p => !p.isHeader && (p.name.toLowerCase().includes(salesSearchTerm.toLowerCase()) || p.sku.toLowerCase().includes(salesSearchTerm.toLowerCase())))
+                                      .map(product => (
                                         <button
                                           key={product.id}
                                           onClick={() => {
@@ -4151,7 +3962,7 @@ export default function App() {
                                             {item.product.variant}
                                           </span>
                                         )}
-                                        <span className="text-[10px] text-neon-blue font-bold">{formatCurrency(finalPrice)}</span>
+                                        <span className="text-[10px] text-neon-blue font-bold">{finalPrice.toLocaleString('vi-VN')}?</span>
                                       </div>
                                     </div>
                                   </div>
@@ -4190,12 +4001,12 @@ export default function App() {
                               <div className="glass p-4 rounded-2xl border-white/5 bg-gradient-to-br from-neon-blue/5 to-transparent">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="text-xs text-gray-400">Tạm tính:</span>
-                                  <span className="text-sm font-medium">{formatCurrency(currentTotal)}</span>
+                                  <span className="text-sm font-medium">{currentTotal.toLocaleString('vi-VN')}?</span>
                                 </div>
                                 <div className="flex items-center justify-between pt-2 border-t border-white/10">
                                   <span className="text-sm font-bold">Tổng thanh toán:</span>
                                   <span className="text-2xl font-black text-neon-blue">
-                                    {formatCurrency(currentTotal)}
+                                    {currentTotal.toLocaleString('vi-VN')}?
                                   </span>
                                 </div>
                               </div>
@@ -4305,7 +4116,13 @@ export default function App() {
                           )}
 
                           <div className="flex-1 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
-                            {filteredOnlineOrders.map(order => (
+                            {groupedOnlineOrders
+                              .filter(order =>
+                                order.shippingCode.toLowerCase().includes(onlineOrderSearchQuery.toLowerCase()) ||
+                                order.transactions.some(t => t.productName.toLowerCase().includes(onlineOrderSearchQuery.toLowerCase()))
+                              )
+                              .slice(0, 20)
+                              .map(order => (
                                 <div
                                   key={order.id}
                                   onClick={() => {
@@ -4387,7 +4204,10 @@ export default function App() {
                   <div className="flex flex-col gap-3 w-full md:w-auto">
                     {/* Category Scroller (Mobile) */}
                     <div className="flex md:hidden items-center gap-2 overflow-x-auto pb-1 hide-scrollbar">
-                      {inventoryCategoryOptions.map((cat, idx) => (
+                      {(() => {
+                        const productCats = Array.from(new Set(products.filter(p => !p.isHeader && p.category).map(p => p.category)))
+                          .filter(c => c && c !== 'Tất cả');
+                        return ['Tất cả', ...productCats].map((cat, idx) => (
                           <button
                             key={`mobile-cat-${cat}-${idx}`}
                             onClick={() => setSearchQuery(cat === 'Tất cả' ? '' : cat)}
@@ -4400,7 +4220,8 @@ export default function App() {
                           >
                             {cat}
                           </button>
-                        ))}
+                        ));
+                      })()}
                     </div>
 
                     <div className="relative">
@@ -4672,7 +4493,7 @@ export default function App() {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 font-mono text-sm">
-                                  {formatCurrency(product.price)}
+                                  {product.price.toLocaleString('vi-VN')}?
                                 </td>
                                 <td className="px-6 py-4 text-xs text-gray-500">
                                   {new Date(product.lastUpdated).toLocaleDateString('vi-VN')}
@@ -5282,7 +5103,7 @@ export default function App() {
                                                   </div>
                                                   <div className="col-span-2 text-right">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">GIÁ</p>
-                                                    <p className="text-xs font-mono text-neon-blue">{formatCurrency(t.price || p?.price || 0)}</p>
+                                                    <p className="text-xs font-mono text-neon-blue">{(t.price || p?.price || 0).toLocaleString()}?</p>
                                                   </div>
                                                   <div className="col-span-1 text-center">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">SL</p>
@@ -5292,7 +5113,7 @@ export default function App() {
                                                   </div>
                                                   <div className="col-span-2 text-right">
                                                     <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mb-0.5">THANH TOÁN</p>
-                                                    <p className="font-mono font-black text-white">{formatCurrency(t.quantity * (t.price || p?.price || 0))}</p>
+                                                    <p className="font-mono font-black text-white">{(t.quantity * (t.price || p?.price || 0)).toLocaleString()}?</p>
                                                   </div>
                                                 </div>
                                               );
@@ -5908,7 +5729,8 @@ export default function App() {
                             <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">{kpi.label}</p>
                             <div className="space-y-1">
                               <h4 className="text-2xl font-black text-white">
-                                {kpi.label.includes('ĐƠN') ? kpi.value : formatCurrency(kpi.value)}
+                                {kpi.label.includes('ĐƠN') ? kpi.value : kpi.value.toLocaleString('vi-VN')}
+                                {!kpi.label.includes('ĐƠN') && <span className="text-xs ml-1 text-gray-400 font-bold">?</span>}
                               </h4>
                               <div className="flex items-center gap-1.5">
                                 <div className={cn(
@@ -5978,7 +5800,7 @@ export default function App() {
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
                             itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                             labelStyle={{ color: '#00f2ff', marginBottom: '4px', fontWeight: '900' }}
-                            formatter={(value: any) => [formatCurrency(Number(value)), '']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', '']}
                           />
                           <Legend
                             verticalAlign="top"
@@ -6037,7 +5859,7 @@ export default function App() {
                           </Pie>
                           <Tooltip
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
-                            formatter={(value: any) => [formatCurrency(Number(value)), '']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', '']}
                           />
                         </PieChart>
                       </ResponsiveContainer>
@@ -6092,7 +5914,7 @@ export default function App() {
                             <p className="text-[10px] text-gray-500 font-mono tracking-widest mt-1">{p.sku}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-black text-white">{formatCurrency(p.revenue)}</p>
+                            <p className="text-sm font-black text-white">{p.revenue.toLocaleString('vi-VN')} ?</p>
                             <p className="text-[10px] text-neon-blue font-bold tracking-tighter mt-1">{p.quantity} l??t ban</p>
                           </div>
                         </div>
@@ -6124,7 +5946,7 @@ export default function App() {
                           />
                           <Tooltip
                             contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
-                            formatter={(value: any) => [formatCurrency(Number(value)), 'Lợi Nhuận']}
+                            formatter={(value: any) => [value.toLocaleString('vi-VN') + ' ?', 'Lợi Nhuận']}
                           />
                           <Bar
                             dataKey="profit"
@@ -6156,8 +5978,8 @@ export default function App() {
                         <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Giá trị đơn Trung bình</p>
                         <h4 className="text-2xl font-black text-neon-purple">
                           {analyticsData.current.directOrderCount + analyticsData.current.onlineOrderCount > 0
-                            ? formatCurrency(Math.round(analyticsData.current.revenue / (analyticsData.current.directOrderCount + analyticsData.current.onlineOrderCount)))
-                            : formatCurrency(0)}
+                            ? Math.round(analyticsData.current.revenue / (analyticsData.current.directOrderCount + analyticsData.current.onlineOrderCount)).toLocaleString('vi-VN')
+                            : '0'} ?
                         </h4>
                         <p className="text-[10px] text-gray-500 italic">Dựa trên {analyticsData.current.directOrderCount + analyticsData.current.onlineOrderCount} đơn hàng</p>
                       </div>
@@ -6370,10 +6192,10 @@ export default function App() {
                             <div className="pt-3 border-t border-white/5 flex justify-between items-end">
                               <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Tổng thanh toán:</span>
                               <span className="text-2xl font-black text-neon-blue">
-                                {formatCurrency(orderTransactionsState.reduce((sum, t) => {
+                                {orderTransactionsState.reduce((sum, t) => {
                                   const price = products.find(p => p.id === t.productId)?.price || 0;
                                   return sum + (price * t.quantity);
-                                }, 0))}
+                                }, 0).toLocaleString('vi-VN')}?
                               </span>
                             </div>
                           </div>
@@ -6467,7 +6289,7 @@ export default function App() {
                                     <div className="text-right">
                                       <p className="text-sm font-bold text-neon-blue">x{t.quantity}</p>
                                       <p className="text-xs text-gray-500">
-                                        {formatCurrency((products.find(p => p.id === t.productId)?.price || 0) * t.quantity)}
+                                        {((products.find(p => p.id === t.productId)?.price || 0) * t.quantity).toLocaleString('vi-VN')}?
                                       </p>
                                     </div>
                                     <button
@@ -6560,7 +6382,19 @@ export default function App() {
                   <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-white/10 shrink-0">
                     <button
                       type="button"
-                      onClick={handleDeleteCurrentOrder}
+                      onClick={() => {
+                        const mvdMatch = editingTransaction.note?.match(shippingCodePattern);
+                        const mvd = mvdMatch ? mvdMatch[1] : null;
+                        if (mvd) {
+                          if (window.confirm('Bạn có chắc chắn muốn xóa TOÀN BỘ đơn hàng này?')) {
+                            const orderTransactions = transactions.filter(t => t.note?.includes(`[MV?: ${mvd}]`) || t.note?.includes(`[MVĐ: ${mvd}]`));
+                            orderTransactions.forEach(t => deleteDoc(doc(db, 'transactions', t.id)));
+                            setEditingTransaction(null);
+                          }
+                        } else {
+                          handleDeleteTransaction(editingTransaction.id);
+                        }
+                      }}
                       className="flex items-center justify-center gap-2 px-6 py-4 rounded-2xl bg-red-500/10 text-red-500 font-bold hover:bg-red-500 hover:text-white transition-all order-3 sm:order-1"
                     >
                       <Trash2 size={18} />
@@ -7715,7 +7549,12 @@ export default function App() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
-                  {filteredSelectorProducts.map(product => (
+                  {products
+                    .filter(p => !p.isHeader && (
+                      p.name.toLowerCase().includes(selectorSearch.toLowerCase()) ||
+                      p.sku.toLowerCase().includes(selectorSearch.toLowerCase())
+                    ))
+                    .map(product => (
                       <button
                         key={product.id}
                         onClick={() => handleAddSelectedProduct(product)}
@@ -7743,7 +7582,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="text-right shrink-0 ml-4">
-                          <p className="text-sm font-black text-neon-blue">{formatCurrency(product.price)}</p>
+                          <p className="text-sm font-black text-neon-blue">{product.price.toLocaleString('vi-VN')}?</p>
                           <p className={cn(
                             "text-[10px] font-bold",
                             product.quantity > 0 ? "text-green-400" : "text-red-400"
@@ -7754,7 +7593,10 @@ export default function App() {
                       </button>
                     ))}
 
-                  {filteredSelectorProducts.length === 0 && (
+                  {products.filter(p => !p.isHeader && (
+                    p.name.toLowerCase().includes(selectorSearch.toLowerCase()) ||
+                    p.sku.toLowerCase().includes(selectorSearch.toLowerCase())
+                  )).length === 0 && (
                       <div className="text-center py-12 text-gray-500">
                         <p>Không tìm thấy sản phẩm nào.</p>
                       </div>
@@ -7828,7 +7670,7 @@ export default function App() {
                         onChange={(e) => setEditingCartItem(prev => prev ? ({ ...prev, price: Number(e.target.value) }) : null)}
                         className="w-full glass p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-neon-blue/50 font-black text-neon-blue text-lg"
                       />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500">₫/sp</span>
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500">?/sp</span>
                     </div>
                   </div>
 
@@ -7848,7 +7690,7 @@ export default function App() {
                           onClick={() => setEditingCartItem(prev => prev ? ({ ...prev, discountType: prev.discountType === 'amount' ? 'percent' : 'amount' }) : null)}
                           className="absolute right-1.5 p-1.5 bg-white/5 rounded-lg text-[10px] font-black hover:bg-white/10 transition-all text-red-400 min-w-[24px]"
                         >
-                          {editingCartItem.discountType === 'amount' ? '₫' : '%'}
+                          {editingCartItem.discountType === 'amount' ? '?' : '%'}
                         </button>
                       </div>
                     </div>
@@ -7866,7 +7708,7 @@ export default function App() {
                           onClick={() => setEditingCartItem(prev => prev ? ({ ...prev, surchargeType: prev.surchargeType === 'amount' ? 'percent' : 'amount' }) : null)}
                           className="absolute right-1.5 p-1.5 bg-white/5 rounded-lg text-[10px] font-black hover:bg-white/10 transition-all text-green-400 min-w-[24px]"
                         >
-                          {editingCartItem.surchargeType === 'amount' ? '₫' : '%'}
+                          {editingCartItem.surchargeType === 'amount' ? '?' : '%'}
                         </button>
                       </div>
                     </div>
@@ -7888,8 +7730,8 @@ export default function App() {
                           if (editingCartItem.surchargeType === 'percent') sur = (subtotal * editingCartItem.surcharge / 100);
                           else sur = editingCartItem.surcharge * editingCartItem.quantity;
                         }
-                        return formatCurrency(Math.max(0, subtotal - disc + sur));
-                      })()}
+                        return Math.max(0, subtotal - disc + sur).toLocaleString('vi-VN');
+                      })()}?
                     </span>
                   </div>
 
