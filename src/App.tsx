@@ -3661,7 +3661,7 @@ export default function App() {
                                         onClick={() => setDirectCashReceived(currentTotal)}
                                         className="col-span-3 py-1.5 rounded-lg bg-neon-blue/10 border border-neon-blue/30 text-neon-blue text-[9px] font-bold hover:bg-neon-blue/20 transition-all active:scale-95 uppercase tracking-widest"
                                       >
-                                        Khach ??a ??: {currentTotal.toLocaleString('vi-VN')}?
+                                        Khách Trả Đúng Bằng: {currentTotal.toLocaleString('vi-VN')}VNĐ
                                       </button>
                                     </div>
 
@@ -3670,7 +3670,7 @@ export default function App() {
                                       <div className="space-y-1.5">
                                         <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                                           <Banknote size={10} className="text-green-400" />
-                                          Khach tr?
+                                          Khách Trả
                                         </label>
                                         <div className="relative">
                                           <input
@@ -3686,7 +3686,7 @@ export default function App() {
                                       <div className="space-y-1.5">
                                         <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                                           <ArrowDownLeft size={10} className="text-neon-purple" />
-                                          Trả lại
+                                          Trả Lại
                                         </label>
                                         <div className="w-full glass px-3 py-2 rounded-xl border border-white/5 flex items-center justify-between">
                                           <span className={cn(
@@ -3705,7 +3705,7 @@ export default function App() {
                                 <div className="space-y-2">
                                   <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                                     <CreditCard size={10} className="text-neon-blue" />
-                                    Hình thức thanh toán
+                                    Hình Thức Thanh Toán
                                   </label>
                                   <div className="flex gap-2 p-1 glass rounded-xl border-white/5">
                                     {[
